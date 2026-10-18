@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0b0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+// Mobile shim: send /api/* and server-hosted media to your Lingua server (server.py) if one is set
+(function(){var f=window.fetch.bind(window);
+ window.lpBase=function(){try{return (localStorage.getItem('lp_server')||'').replace(/\/+$/,'')}catch(e){return ''}};
+ window.lpAbs=function(u){return(typeof u==='string'&&u[0]==='/'&&u[1]!=='/')?lpBase()+u:u};
+ window.fetch=function(u,o){return f(lpAbs(u),o)};
+ window.lpSetServer=function(){var v=prompt('Lingua server address (e.g. http://192.168.1.20:8000). Leave empty to clear.',lpBase());
+  if(v===null)return;try{localStorage.setItem('lp_server',v.trim())}catch(e){}location.reload()};
+ if('serviceWorker' in navigator&&location.protocol.indexOf('http')==0)navigator.serviceWorker.register('sw.js').catch(function(){});
+})();
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<title>Lingua — Arabic MVP</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--tx:#1c1c1e;--mu:#6b6b70;--ac:#2f6f62;--ln:#e3e1db;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121415;--card:#1c1f21;--tx:#ecebe8;--mu:#9a9a9f;--ac:#5fb5a3;--ln:#2c3033}}
+:root[data-theme="dark"]{--bg:#0b0b0c;--card:#17181a;--tx:#f4f3f1;--mu:#9a9a9f;--ac:#e11d2e;--ln:#26282b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:12px 16px;font-weight:700;font-size:20px;color:var(--ac)}
+button{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+main{max-width:1100px;margin:0 auto;padding:16px 16px 120px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:16px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.num{font-size:28px;font-weight:600}.mu{color:var(--mu);font-size:13px}
+.w{cursor:pointer;padding:0 3px;border-radius:5px}.w:hover,.w.sel{background:var(--ac);color:#fff}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;align-items:center}
+.ar{direction:rtl;font-size:28px}.big{font-size:40px;direction:rtl;text-align:center;margin:30px 0}
+table{width:100%;border-collapse:collapse}td,th{padding:7px;border-bottom:1px solid var(--ln);text-align:left}
+.v{display:none}.v.show{display:block}.chart{display:flex;gap:6px;align-items:flex-end;height:90px}
+.chart div{flex:1;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px}
+
+.dock{position:fixed;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;z-index:40;pointer-events:none;padding:0 8px}
+.bar-nav{pointer-events:auto;width:min(100%,390px);height:72px;border-radius:9999px;padding:7px;background:rgba(39,35,33,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.12);box-shadow:0 16px 36px rgba(0,0,0,.5);display:flex;gap:8px;font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+.ni{height:58px;min-width:52px;flex:0 0 52px;border-radius:9999px;border:0;padding:0;display:flex;align-items:center;justify-content:center;gap:0;overflow:hidden;white-space:nowrap;cursor:pointer;background:rgba(255,255,255,.08);color:#94a3b8;transition:flex-basis .5s cubic-bezier(.25,1,.33,1),background-color .4s,color .4s,padding .5s,gap .5s,box-shadow .4s}
+.ni.is-active{flex:1 1 auto;padding:0 16px;gap:8px;background:#fff;color:#18212d;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.ni svg{width:22px;height:22px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:transform .4s}
+.ni:hover svg{transform:scale(1.08)}
+.ni span{max-width:0;opacity:0;transform:translateX(-10px);font-size:15px;font-weight:700;letter-spacing:-.03em;transition:max-width .45s cubic-bezier(.25,1,.33,1),opacity .35s,transform .45s}
+.ni.is-active span{max-width:100px;opacity:1;transform:none}
+
+.rh{display:flex;justify-content:space-between;align-items:flex-end;margin:18px 0 12px;font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+.rh h2{margin:0;font-size:26px;font-weight:800;letter-spacing:-.03em;display:flex;align-items:center;gap:10px}
+.rh h2 svg{width:26px;height:26px;stroke:var(--ac);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.rh .mu{margin-top:4px}
+.arr{display:flex;gap:8px}.arr button{width:44px;height:44px;border-radius:14px;padding:0;font-size:18px;background:var(--card)}
+.row{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:4px}
+.row::-webkit-scrollbar{display:none}
+.pc{flex:0 0 172px;scroll-snap-align:start;cursor:pointer}
+.pc.soon{opacity:.55;cursor:default}
+.poster{aspect-ratio:2/3;border-radius:22px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font:800 24px/1.05 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:-.02em;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.5);border:1px solid var(--ln)}
+.tag{position:absolute;top:10px;left:10px;font:700 12px "Plus Jakarta Sans",sans-serif;padding:6px 10px;border-radius:8px;background:rgba(15,20,24,.85);color:#fff;text-shadow:none;letter-spacing:0}
+.lv{position:absolute;top:10px;right:10px;font:700 12px "Plus Jakarta Sans",sans-serif;padding:6px 10px;border-radius:8px;background:var(--ac);color:#fff;text-shadow:none;letter-spacing:0}
+.lv.g{background:#3a3d41}
+.pt{font:700 16px "Plus Jakarta Sans",sans-serif;margin:10px 2px 2px}.pm{color:var(--mu);font-size:14px;margin:0 2px}
+
+#cards{--ac:#a7f05a}#cards button.pri,#cards button.on{color:#0b0b0c}
+.hero{position:relative;overflow:hidden;border-radius:26px;padding:22px;min-height:150px;background:linear-gradient(135deg,#bff56e,#58b85a);color:#0b0b0c;font-family:"Plus Jakarta Sans",system-ui,sans-serif}
+.hero h3{margin:0 0 4px;font-size:24px;font-weight:800;letter-spacing:-.02em;position:relative}.hero .sb{font-size:14px;font-weight:600;opacity:.75;margin-bottom:18px;position:relative}
+.hero .st{position:absolute;right:-30px;bottom:-30px;border-radius:44px;background:rgba(255,255,255,.18)}
+.hero button{position:relative;background:#0b0b0c;color:#fff;border:0;border-radius:9999px;padding:11px 20px;font-weight:700}
+.sh{font:700 17px "Plus Jakarta Sans",sans-serif;margin:22px 0 12px}
+.tools{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}.tools::-webkit-scrollbar{display:none}
+.tool{flex:0 0 96px;text-align:center;font:600 13px "Plus Jakarta Sans",sans-serif;cursor:pointer}
+.tool .tb{height:96px;border-radius:26px;background:#1a1b1d;display:flex;align-items:center;justify-content:center;margin-bottom:8px;border:1px solid transparent}
+.tool:hover .tb{border-color:#a7f05a}
+.ic{width:46px;height:46px;border-radius:50%;background:#a7f05a;display:flex;align-items:center;justify-content:center}
+.ic svg,.pt2 svg{width:24px;height:24px;stroke:#0b0b0c;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pt2{border-radius:22px;padding:16px;min-height:96px;color:#0b0b0c;font:800 16px/1.15 "Plus Jakarta Sans",sans-serif;position:relative;cursor:pointer}
+.pt2 svg{position:absolute;right:14px;bottom:14px;width:34px;height:34px}
+
+.lf{transform-box:fill-box;transform-origin:center;cursor:pointer}.lf.pop{animation:pop .7s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+.can{transform-origin:160px 280px;animation:sway 6s ease-in-out infinite}
+@keyframes sway{0%,100%{transform:rotate(-1.2deg)}50%{transform:rotate(1.2deg)}}
+.xpb{height:10px;border-radius:9px;background:var(--ln);overflow:hidden;margin-top:8px}.xpb div{height:100%;background:linear-gradient(90deg,#a7f05a,#f5c542);transition:width .8s}
+.bd{text-align:center;padding:12px 6px;border:1px solid var(--ln);border-radius:14px;font-size:12px}.bd i{display:block;font-style:normal;font-size:28px}.bd.lock{opacity:.35;filter:grayscale(1)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(100px + env(safe-area-inset-bottom,0px));background:#a7f05a;color:#0b0b0c;font-weight:700;padding:10px 16px;border-radius:9999px;z-index:60;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+
+.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.sc{aspect-ratio:1;border-radius:28px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;color:#fff;font:800 18px "Plus Jakarta Sans",sans-serif;transition:transform .2s}.sc:hover{transform:scale(1.03)}
+.sc i{width:48px;height:48px;border-radius:16px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font:800 22px "Plus Jakarta Sans",sans-serif}.sc small{display:block;font:600 12px "Plus Jakarta Sans",sans-serif;opacity:.8}
+#ab{display:none;align-items:center;gap:8px;padding:8px 0;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:3}
+#ab input{flex:1;min-width:0;padding:9px 12px;border-radius:9999px;border:1px solid var(--ln);background:var(--card);color:var(--tx);font:inherit}#ab b{font:800 17px "Plus Jakarta Sans",sans-serif}
+.lk{padding:8px 14px;border:1px solid var(--ln);border-radius:9999px;color:var(--ac);text-decoration:none;font-weight:700;font-size:14px;white-space:nowrap}
+.th{aspect-ratio:16/9;border-radius:16px;position:relative;overflow:hidden}.th.sq{aspect-ratio:1}
+.pl{position:absolute;inset:0;margin:auto;width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px}
+.dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.8);color:#fff;font-size:12px;padding:2px 6px;border-radius:6px}
+.vr{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}.vi{cursor:pointer}.rt{direction:rtl;text-align:right}
+.shelf,.st9{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin-bottom:16px}.s9{flex:0 0 130px;aspect-ratio:9/16;border-radius:16px;padding:10px;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:flex-end;cursor:pointer}
+.tt{height:calc(100vh - 250px);min-height:420px;max-width:380px;margin:0 auto;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none}
+.tv{height:100%;scroll-snap-align:start;border-radius:24px;margin-bottom:10px;position:relative;color:#fff;overflow:hidden}
+.act{position:absolute;right:12px;bottom:90px;display:flex;flex-direction:column;gap:16px;text-align:center;font-size:22px}.act small{font-size:11px}
+.cap{position:absolute;left:14px;right:70px;bottom:18px;text-shadow:0 1px 8px rgba(0,0,0,.6)}.cap div{font-size:18px}
+.av{width:38px;height:38px;border-radius:50%;flex:0 0 38px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}.po{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.st9 .av{width:62px;height:62px;flex-basis:62px;outline:3px solid #e1306c;outline-offset:2px;margin:3px}
+.ig3{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}.ig3 .th{border-radius:4px}
+.nr{display:flex;gap:12px;cursor:pointer;margin-bottom:14px}.nr .th{flex:0 0 120px;aspect-ratio:4/3;border-radius:12px}
+video.th{display:block;width:100%;max-height:none;background:#000}
+.sim{cursor:pointer}.sim .pl{display:none}.sim.ps .pl{display:flex}
+.pb{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.3)}.pb i{display:block;height:100%;width:0;background:var(--ac);animation:pg linear infinite}.ps .pb i{animation-play-state:paused}@keyframes pg{to{width:100%}}
+.tv .pl{width:64px;height:64px;font-size:26px}.tv .act span,.bar span{cursor:pointer}.act span.on,.bar span.on{color:#ff3b5c}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:16px 16px 100px;z-index:50;box-shadow:0 -8px 24px rgba(0,0,0,.4)}
+.shelf button,.bar button{white-space:nowrap}
+.art{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font:800 clamp(34px,9vw,64px)/1.1 system-ui;color:rgba(255,255,255,.24);direction:rtl;pointer-events:none}
+.lg{display:inline-flex;width:28px;height:28px;border-radius:9px;background:var(--ac);color:#fff;align-items:center;justify-content:center;font:800 14px sans-serif;font-style:normal;margin-right:8px;vertical-align:middle}
+/* ===== Player (from Player.html), scoped to #watch ===== */
+#watch{--bg:#0d0e11;--surf:#17181c;--surf2:#1e2025;--ink:#f2f2f4;--mut:#9699a3;--line:#292b31;--acc:#ff293b;--acci:#fff;--pill:rgba(24,25,30,.58);--pillText:#f2f2f4;--glassBorder:rgba(255,255,255,.13);--glassHi:rgba(255,255,255,.08);--shadow:0 28px 70px rgba(0,0,0,.42);--ui:Manrope,system-ui,-apple-system,"Segoe UI",sans-serif;--ar:Amiri,"Noto Naskh Arabic","Geeza Pro","Traditional Arabic",serif;color:var(--ink);font:15px/1.55 var(--ui)}
+#watch *{box-sizing:border-box}
+#watch #st{margin:7px 3px 11px;font-size:11px;color:var(--mut)}
+#watch .cinema{--glass:rgba(16,17,21,.78);position:relative;container-type:inline-size;aspect-ratio:16/9;max-height:82vh;width:100%;margin:0 auto;background:#050505;border-radius:28px;overflow:hidden;color:#fff;box-shadow:var(--shadow);user-select:none;-webkit-user-select:none}
+#watch .cinema:fullscreen,#watch .cinema:-webkit-full-screen{max-height:none;aspect-ratio:auto;border-radius:0;height:100%}
+#watch .cinema.pfs{position:fixed;inset:0;z-index:50;max-height:none;aspect-ratio:auto;border-radius:0}
+#watch .cinema.idle{cursor:none}
+#watch .cinema video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#watch .cinema:not(.loaded)::before{content:"Pick a movie or episode from the Library";position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:#8f929b;font-size:14px;z-index:1}
+#watch #cap{position:absolute;left:4%;right:4%;bottom:112px;text-align:center;pointer-events:none;transition:bottom .25s,opacity .25s}
+#watch .idle #cap{bottom:7%}
+#watch .open #cap{opacity:0}
+#watch #ar{display:inline-block;max-width:100%;font:400 calc(clamp(25px,3.8cqw,62px)*var(--subscale,1))/1.75 var(--ar);direction:rtl;background:rgba(18,18,22,.38);border:1px solid rgba(255,255,255,.18);padding:1px .55em;border-radius:.42em;backdrop-filter:blur(8px);text-shadow:0 2px 9px #000;pointer-events:auto}
+#watch #ar:empty{display:none}
+#watch #en{display:none!important}
+#watch .w{display:inline-block;padding:0 .12em;border-radius:.3em;cursor:pointer;transition:background .15s}
+#watch .w:hover{background:rgba(255,255,255,.18)}
+#watch .w.sel{background:var(--acc);color:#fff;text-shadow:none}
+#watch #ctl{position:absolute;left:50%;right:auto;bottom:15px;width:min(820px,calc(100% - 28px));padding:10px 13px 11px;background:linear-gradient(135deg,var(--glassHi),rgba(255,255,255,.08));color:var(--pillText);border:1px solid var(--glassBorder);border-radius:25px;box-shadow:0 18px 45px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.28);backdrop-filter:blur(22px) saturate(1.45);-webkit-backdrop-filter:blur(22px) saturate(1.45);transform:translateX(-50%);z-index:3;transition:opacity .25s,transform .25s}
+#watch .idle #ctl{opacity:0;pointer-events:none}
+#watch .prow{display:flex;align-items:center;gap:7px}
+#watch .time{font-size:10px;font-variant-numeric:tabular-nums;min-width:40px;opacity:.72}
+#watch #seek{flex:1;accent-color:var(--acc);height:4px;cursor:pointer}
+#watch .btns{margin-top:7px;flex-wrap:wrap;justify-content:center}
+#watch .cb{width:35px;height:35px;display:grid;place-items:center;border:0;border-radius:50%;background:rgba(255,255,255,.10);color:inherit;cursor:pointer;padding:0;transition:background .15s,transform .1s;font:inherit}
+#watch .cb:hover{background:rgba(255,255,255,.18)}
+#watch .cb:active{transform:scale(.93)}
+#watch .cb svg{width:17px;height:17px;fill:currentColor}
+#watch .play{width:47px;height:47px;background:var(--acc);color:#fff}
+#watch .play:hover{background:var(--acc);filter:brightness(1.07)}
+#watch .play svg{width:21px;height:21px}
+#watch .play .i2{display:none}
+#watch .play.playing .i2{display:block}
+#watch .play.playing .i1{display:none}
+#watch .sizeCtl{display:flex;align-items:center;gap:3px;margin-left:3px;padding:3px 4px;border-radius:17px;background:rgba(255,255,255,.08)}
+#watch .mini{min-width:29px;height:27px;border:0;border-radius:12px;background:transparent;color:inherit;font:800 11px var(--ui);cursor:pointer}
+#watch .mini:hover{background:rgba(255,255,255,.12)}
+#watch #fontSizeLabel{font-size:9px;min-width:32px;text-align:center;opacity:.7}
+#watch .sw{display:flex;align-items:center;gap:7px;font-size:10px;cursor:pointer}
+#watch .sw input{appearance:none;width:30px;height:17px;border-radius:17px;background:rgba(255,255,255,.18);position:relative;margin:0;cursor:pointer}
+#watch .sw input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:transform .15s}
+#watch .sw input:checked{background:var(--acc)}
+#watch .sw input:checked::after{transform:translateX(13px)}
+#watch .sync{display:flex;align-items:center;gap:4px;font-size:10px;margin-left:auto}
+#watch .sync .cb{width:27px;height:27px}
+#watch .eno{min-width:28px;text-align:center}
+#watch .keys{font-size:10px;color:var(--mut);margin:9px 3px}
+#watch #panel{position:absolute;top:0;right:0;bottom:0;width:min(430px,44cqw);background:linear-gradient(135deg,color-mix(in srgb,var(--surf) 48%,transparent),color-mix(in srgb,var(--surf2) 34%,transparent));color:var(--ink);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);border-left:1px solid var(--glassBorder);box-shadow:-20px 0 60px rgba(0,0,0,.14),inset 1px 0 0 rgba(255,255,255,.14);transform:translateX(104%);transition:transform .35s cubic-bezier(.2,.8,.2,1);z-index:4;display:flex;flex-direction:column;cursor:default}
+#watch .open #panel{transform:none}
+#watch .open #ctl{transform:translateX(calc(-50% - min(215px,22cqw)))}
+#watch .ph{display:flex;align-items:center;gap:8px;padding:14px 16px 7px}
+#watch .ph .go{display:flex;align-items:center;gap:7px;height:38px;padding:0 16px 0 11px;border:0;border-radius:19px;background:var(--acc);color:#fff;font:800 12px var(--ui);cursor:pointer}
+#watch .ph .go svg{width:16px;height:16px;fill:currentColor}
+#watch .ph .sp{flex:1}
+#watch .pbody{overflow:auto;padding:7px 17px 24px;flex:1}
+#watch .line{background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.06));border-radius:18px;padding:14px 16px;border:1px solid rgba(255,255,255,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+#watch #pAr{font:400 clamp(24px,3.1cqw,34px)/2 var(--ar);direction:rtl;text-align:right}
+#watch #pEn{display:block;color:var(--mut);font-size:14px;line-height:1.55;margin-top:7px;border-top:1px solid var(--line);padding-top:8px}
+#watch #word{margin-top:17px}
+#watch .hint{color:var(--mut);font-size:13px}
+#watch .word h2{font:700 52px/1.2 var(--ar);margin:0;direction:rtl;text-align:right;color:var(--acc)}
+#watch .contextBox{margin-top:13px;padding:12px 14px;background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.06));border:1px solid rgba(255,255,255,.22);border-radius:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+#watch .contextLabel{font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--mut)}
+#watch .contextAr{font:400 22px/1.8 var(--ar);direction:rtl;text-align:right;margin-top:3px}
+#watch .contextEn{font-size:12px;color:var(--mut);margin-top:2px}
+#watch .m{font-size:17px;font-weight:800;line-height:1.4;margin:16px 0 4px}
+#watch .ptag{font-size:12px;color:var(--mut);margin:3px 0}
+#watch .load{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{#watch 50%{opacity:.35}}
+#watch #word h3{font-size:12px;font-weight:800;margin:19px 0 5px}
+#watch .dictExample{background:linear-gradient(135deg,rgba(255,255,255,.15),rgba(255,255,255,.055));border:1px solid rgba(255,255,255,.20);border-radius:13px;padding:9px 12px;margin:7px 0;box-shadow:inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#watch .dictExample .a{direction:rtl;text-align:right;font:400 19px/1.8 var(--ar)}
+#watch .dictExample .e{font-size:12px;color:var(--mut);margin-top:1px}
+#watch .apiNote{font-size:10px;color:var(--mut);margin-top:10px;line-height:1.5}
+#watch .apiNote a{color:var(--acc);text-decoration:none}
+#watch .errorNote{font-size:12px;color:var(--mut);padding:10px 0}
+@media (max-width:900px){
+#watch .open #ctl{transform:translateX(-50%)}}
+@container (max-width:640px){#watch #panel{width:auto;left:0;top:auto;height:72%;border-left:0;border-top:1px solid var(--line);border-radius:22px 22px 0 0;transform:translateY(104%)}
+#watch .open #ctl{opacity:0;pointer-events:none}
+#watch .sync>span:first-child,#watch .sw span{display:none}}
+@media (max-width:620px){#watch .cinema{border-radius:20px}
+#watch .btns{gap:4px}
+#watch .sw{display:none}
+#watch .sizeCtl{margin-left:0}
+#watch .sync{margin-left:0}
+#watch .keys{display:none}}
+@media (prefers-reduced-motion:reduce){#watch *{transition:none!important;animation:none!important}}
+#watch .rootBox{margin-top:14px;padding:10px 14px;border:1px solid rgba(255,255,255,.22);border-radius:14px;background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.06))}
+#watch .rootAr{font:700 30px/1.5 var(--ar);direction:rtl;text-align:right;color:var(--acc)}
+#watch .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;direction:rtl}
+#watch .chip{font:400 18px var(--ar);padding:2px 10px;border-radius:12px;border:1px solid var(--line);cursor:pointer}
+#watch .chip:hover{background:var(--acc);color:#fff}
+#watch .senses{margin:4px 0;padding-left:20px;font-size:13px;line-height:1.5}
+#watch .aiWord{font:700 46px/1.3 var(--ar);direction:rtl;text-align:right;color:var(--acc)}
+#watch #word summary{cursor:pointer;font-size:12px;font-weight:800;margin:14px 0 6px}
+#watch .aiSet select,#watch .aiSet input{display:block;width:100%;box-sizing:border-box;margin:5px 0;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.12);color:var(--ink);font:13px var(--ui)}
+#watch .pTop{display:flex;margin-bottom:12px}
+#watch .pback{height:40px;padding:0 16px;border:1px solid var(--line);border-radius:20px;background:var(--surf2);color:var(--ink);font:700 12px var(--ui);cursor:pointer}
+#watch .mini{padding:0}
+#watch .go{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 16px;border:0;border-radius:19px;background:var(--acc);color:#fff;font:800 12px var(--ui);cursor:pointer}
+#watch .saveW{margin-top:14px}
+
+</style></head><body>
+<header style="display:flex;justify-content:space-between;align-items:center"><span>Lingua · العربية</span><button onclick="lpSetServer()" aria-label="Server settings" style="padding:4px 10px">⚙︎</button></header>
+<main>
+<section id="library" class="v show"><div id="rows"></div><p class="mu">Only legal sources: public-domain, licensed/authorized providers, or your own files.</p></section>
+<section id="search" class="v"><div id="ab"><button id="bk" aria-label="Back">←</button><b id="an"></b><input id="sq" placeholder="Search…"></div><div id="soc"></div></section>
+<section id="watch" class="v">
+<div class="pTop"><button class="pback" data-v="library">← Library</button></div>
+<div id="st"></div>
+
+<div class="cinema" id="cinema">
+  <video id="v" playsinline></video>
+  <div id="cap"><div id="ar"></div><br><div id="en"></div></div>
+
+  <div id="ctl">
+    <div class="prow"><span class="time" id="tc">0:00</span><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek"><span class="time" id="td" style="text-align:right">0:00</span></div>
+    <div class="prow btns">
+      <button class="cb" id="prev" title="Previous line" aria-label="Previous line"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg></button>
+      <button class="cb play" id="pp" title="Play / pause" aria-label="Play or pause"><svg class="i1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="i2" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg></button>
+      <button class="cb" id="next" title="Next line" aria-label="Next line"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg></button>
+      <button class="cb" id="rep" title="Replay line" aria-label="Replay line"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8a5 5 0 1 1-5 5H5a7 7 0 1 0 7-8z"/></svg></button>
+      <div class="sizeCtl" aria-label="Subtitle text size">
+        <button class="mini" id="fontDown" title="Smaller Arabic text">A−</button>
+        <span id="fontSizeLabel">100%</span>
+        <button class="mini" id="fontUp" title="Larger Arabic text">A+</button>
+      </div>
+      <label class="sw"><input type="checkbox" id="ap"><span>Pause after each line</span></label>
+      <div class="sync"><span>English sync</span><button class="cb" id="enm" aria-label="English earlier">−</button><span id="eno">0s</span><button class="cb" id="enp" aria-label="English later">+</button></div>
+      <button class="cb" id="fs" title="Full screen (F)" aria-label="Full screen"><svg viewBox="0 0 24 24"><path d="M5 5h5v2H7v3H5zM14 5h5v5h-2V7h-3zM5 14h2v3h3v2H5zM17 14h2v5h-5v-2h3z"/></svg></button>
+    </div>
+  </div>
+
+  <aside id="panel">
+    <div class="ph">
+      <button class="go" id="cont"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Continue</button>
+      <span class="sp"></span>
+      <button class="cb" id="pprev" title="Previous line" aria-label="Previous line"><svg viewBox="0 0 24 24"><path d="M15.4 6 14 4.6 6.6 12 14 19.4 15.4 18 9.4 12z"/></svg></button>
+      <button class="cb" id="pnext" title="Next line" aria-label="Next line"><svg viewBox="0 0 24 24"><path d="M8.6 6 10 4.6 17.4 12 10 19.4 8.6 18l6-6z"/></svg></button>
+    </div>
+    <div class="pbody">
+      <div class="line"><div id="pAr"></div><div id="pEn"></div></div>
+      <div id="word" class="word"><div class="hint">Tap any Arabic word to see its meaning, the current context, and examples from other sentences.</div></div>
+    </div>
+  </aside>
+</div>
+<p class="keys">Space plays or pauses. ←/→ change line. R replays. F toggles full screen. A−/A+ changes Arabic subtitle size. Pausing opens the word panel.</p>
+</section>
+
+<section id="cards" class="v">
+ <div id="pane-hub">
+ <div class="hero"><div class="st" style="width:230px;height:230px"></div><div class="st" style="width:170px;height:170px"></div><div class="st" style="width:110px;height:110px"></div>
+  <h3>Flashcards</h3><div class="sb" id="hdue"></div><button data-p="rev">Start Learning</button></div>
+ <div class="sh">Study Tools</div><div class="tools"><div class="tool" data-p="words"><div class="tb"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M9 8h6"/></svg></div></div>My words</div><div class="tool" data-p="ai"><div class="tb"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></div></div>AI tutor</div><div class="tool" data-a="qz"><div class="tb"><div class="ic"><svg viewBox="0 0 24 24"><path d="M9 9a3 3 0 1 1 4.2 2.7c-.8.4-1.2 1-1.2 1.8"/><circle cx="12" cy="17.5" r=".6"/></svg></div></div>Quiz me</div><div class="tool" data-a="mk"><div class="tb"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></div></div>Sentences</div></div>
+ <div class="sh">Practice</div><div class="pg"><div class="pt2" style="background:#7cc8ff" data-a="qz">Quiz<br>&amp; Tests<svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></div><div class="pt2" style="background:#f2785c" data-a="mk">Make<br>Sentences<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></div><div class="pt2" style="background:#c8f59a" data-p="rev">Due<br>Today<svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg></div><div class="pt2" style="background:#b8b0f5" data-p="words">Saved<br>Words<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M9 8h6"/></svg></div></div></div>
+ <div class="bar" id="subbar" style="display:none"><button data-p="hub">← Flashcards</button></div>
+ <div class="card" id="fc"></div>
+ <div class="card" id="pane-words" style="display:none"><table id="vt"></table></div>
+ <div class="card" id="pane-ai" style="display:none"><div id="ailog" style="max-height:40vh;overflow:auto"></div>
+  <div class="bar"><button id="qz">Quiz me</button><button id="mk">Sentences with my words</button></div>
+  <div class="bar"><input id="aiq" placeholder="Ask about a word, sentence or grammar…" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);font:inherit"><button class="pri" id="aisend">Send</button></div></div>
+</section>
+<section id="profile" class="v">
+ <div class="card"><h2 style="margin:0">Profile · Learning Arabic</h2><div class="mu">Native: English · Level: A1 · Daily goal: <select id="goal"><option value="5">Casual 5</option><option value="15" selected>Normal 15</option><option value="30">Intensive 30</option></select></div></div>
+ <div class="card" id="xp"></div>
+ <div class="card"><b>Your word tree</b><div id="tree"></div><div id="leafcap" class="mu" style="min-height:22px;text-align:center"></div></div>
+ <div class="card"><b>Badges</b><div class="grid" id="badges" style="margin-top:10px"></div></div>
+ <div class="grid" id="hgrid"></div>
+ <div class="card" style="margin-top:12px"><div id="unlock"></div></div>
+ <div class="grid" id="sgrid"></div>
+ <div class="card" style="margin-top:12px"><b>Reviews, last 7 days</b><div class="chart" id="chart"></div></div>
+</section>
+</main>
+<div id="toast"></div>
+<div class="dock"><nav class="bar-nav" aria-label="Primary navigation"><button class="ni is-active" data-v="library" aria-label="Library"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Library</span></button><button class="ni" data-v="search" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search</span></button><button class="ni" data-v="cards" aria-label="Flashcards"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="13" rx="2"/><path d="M7 4h12a2 2 0 0 1 2 2v11"/></svg><span>Flashcards</span></button><button class="ni" data-v="profile" aria-label="Profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span>Profile</span></button></nav></div>
+<script>
+// ---- data: word|lemma|gloss in THIS sentence|part of speech|root
+const D=[
+["أنا|أنا|I|pronoun|-","أريد|أراد|I want|verb (present, 1st sg)|ر-و-د","أن|أن|to (links two verbs)|particle|-","أذهب|ذهب|I go|verb (present, 1st sg)|ذ-ه-ب","إلى|إلى|to / toward|preposition|-","المدرسة|مدرسة|the school|noun (f.)|د-ر-س","I want to go to school."],
+["هذه|هذا|this (f.)|demonstrative|-","فرصة|فرصة|opportunity (a chance, not an event)|noun (f.)|ف-ر-ص","جيدة|جيد|good (f.)|adjective|ج-و-د","This is a good opportunity."],
+["أين|أين|where|question word|-","تسكن|سكن|you live (reside)|verb (present, 2nd sg)|س-ك-ن","الآن|الآن|now|adverb|-","Where do you live now?"],
+["الكتاب|كتاب|the book|noun (m.)|ك-ت-ب","على|على|on|preposition|-","الطاولة|طاولة|the table|noun (f.)|-","The book is on the table."],
+["نحن|نحن|we|pronoun|-","نحب|أحب|we love / like|verb (present, 1st pl)|ح-ب-ب","القهوة|قهوة|the coffee|noun (f.)|ق-ه-و","العربية|عربي|Arabic (f. adj.)|adjective|ع-ر-ب","We love Arabic coffee."],
+["سأرى|رأى|I will see|verb (future, 1st sg)|ر-أ-ي","صديقي|صديق|my friend|noun (m.) + my|ص-د-ق","غدا|غد|tomorrow|adverb|غ-د-و","I will see my friend tomorrow."]];
+let cues=D.map((s,i)=>({s:i*4,e:i*4+3.6,tr:s[s.length-1],toks:s.slice(0,-1).map(x=>{const p=x.split("|");return{w:p[0],l:p[1],g:p[2],pos:p[3],root:p[4]}})}));
+const LEX={};cues.forEach(c=>c.toks.forEach(t=>LEX[t.w]=t));
+const $=id=>document.getElementById(id),today=()=>new Date().toISOString().slice(0,10);
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let vocab=ld("lp_v",[]),log=ld("lp_log",{}); // log[day]={rev,sec}
+const day=()=>log[today()]=log[today()]||{rev:0,sec:0};
+function nav(v){document.querySelectorAll(".v").forEach(e=>e.classList.toggle("show",e.id==v));document.querySelectorAll(".ni").forEach(b=>b.classList.toggle("is-active",b.dataset.v==(v=="watch"?"library":v)));scrollTo(0,0);if(v=="cards")pane("hub");if(v!="watch")stopPlayer();render()}
+document.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>nav(b.dataset.v));
+document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>nav(b.dataset.go));
+
+// ---- player: Player.html (looks + behaviour), wired into the Library ----
+let curTitle="",LW={};
+const stopPlayer=()=>{try{v.pause()}catch(e){}};
+function baseName(u){try{return decodeURIComponent(String(u).split("?")[0].split("/").pop())}catch(e){return String(u)}}
+function saveWord(){
+  const b=$("saveW"),w=LW.word,i=LW.i,a=LW.ai,d=LW.dict;
+  if(w==null||!AR[i])return;
+  let gloss=(a&&a.meaning_in_context)||(d&&d.senses&&d.senses[0]&&d.senses[0].meaning)||"";
+  if(!gloss){gloss=prompt("Meaning?");if(!gloss)return}
+  const lemma=(a&&a.lemma)||(d&&(d.formOf||d.matched))||w,ex=vocab.find(x=>x.lemma==lemma);
+  if(ex)ex.n++;else vocab.push({word:w,lemma,tr:gloss,sent:AR[i].t,sentTr:findEn(AR[i]),src:curTitle||"My video",date:today(),n:1,ease:2.5,ivl:0,due:today(),reps:0,hist:[]});
+  sv("lp_v",vocab);b.textContent="Saved ✓";toast(ex?"🔁 Seen again! +1 encounter":"🍃 New leaf on your tree! +10 XP");render()}
+
+
+const v=$('v'),C=$('cinema');
+let AR=[],EN=[],cur=-1,pausedFor=-1,enOff=0,idleT,seeking=false,subScale=Number(localStorage.getItem('arabicSubScale')||1);
+const cache=new Map();
+
+// ---------- SRT ----------
+function decodeBuf(buf){
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(buf)}
+  catch(e){return new TextDecoder('windows-1256').decode(buf)}
+}
+async function readText(file){return decodeBuf(await file.arrayBuffer())}
+async function fetchText(u){const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return decodeBuf(await r.arrayBuffer())}
+function ts(s){const m=s.trim().replace(',','.').match(/(\d+):(\d+):(\d+)\.?(\d*)/);
+  return +m[1]*3600+ +m[2]*60+ +m[3]+(m[4]?+('0.'+m[4]):0)}
+function parseSrt(t){
+  const out=[];
+  t.replace(/\r/g,'').replace(/^\uFEFF/,'').split(/\n\s*\n/).forEach(b=>{
+    const L=b.trim().split('\n');
+    const i=L.findIndex(l=>l.includes('-->'));
+    if(i<0)return;
+    const [a,z]=L[i].split('-->');
+    const text=L.slice(i+1).join(' ').replace(/<[^>]+>/g,'').replace(/\{[^}]+\}/g,'').replace(/\s+/g,' ').trim();
+    if(text)out.push({s:ts(a),e:ts(z),t:text});
+  });
+  return out.sort((a,b)=>a.s-b.s);
+}
+
+// ---------- Arabic helpers ----------
+const DIAC=/[\u064B-\u065F\u0670\u0640]/g;
+function norm(w){return w.replace(DIAC,'').replace(/[إأآٱ]/g,'ا').replace(/ى/g,'ي').toLowerCase()}
+function clean(w){return w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'')}
+function base(w){return norm(clean(w)).replace(/^(وال|فال|بال|لل|ال)/,'')}
+function tokens(s){return s.split(/\s+/).filter(Boolean)}
+function findEn(c){
+  const r=[];
+  EN.forEach(x=>{const xs=x.s+enOff,xe=x.e+enOff;if(Math.min(c.e,xe)-Math.max(c.s,xs)>0.15)r.push(x.t)});
+  return r.join(' ');
+}
+const fmt=t=>{t=Math.max(0,t|0);const h=(t/3600)|0,m=((t%3600)/60)|0,s=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')};
+
+// ---------- Loading ----------
+function pstatus(){
+  $('st').textContent=[v.src?'video ✓':'video —',AR.length?`Arabic ${AR.length} lines ✓`:'Arabic —',EN.length?`English ${EN.length} lines ✓`:'English —'].join('  ·  ');
+}
+
+// ---------- Subtitles + panel ----------
+function idxAt(t){let lo=0,hi=AR.length-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(AR[m].s<=t){r=m;lo=m+1}else hi=m-1}return r}
+function renderTokens(box,i){
+  box.innerHTML='';
+  tokens(AR[i].t).forEach((tok,k)=>{
+    const sp=document.createElement('span');sp.className='w';sp.textContent=tok;sp.dataset.k=k;sp.tabIndex=0;
+    sp.onclick=ev=>{ev.stopPropagation();pickWord(tok,k,i)};
+    sp.onkeydown=ev=>{if(ev.key==='Enter'){ev.stopPropagation();pickWord(tok,k,i)}};
+    box.appendChild(sp);box.appendChild(document.createTextNode(' '));
+  });
+}
+function show(i){
+  cur=i;
+  if(i<0){$('ar').innerHTML='';$('en').textContent='';return}
+  renderTokens($('ar'),i);$('en').textContent=findEn(AR[i]);
+  if(C.classList.contains('open'))fillPanel(i);
+}
+function fillPanel(i){
+  if(i<0){$('pAr').innerHTML='';$('pEn').textContent='';return}
+  renderTokens($('pAr'),i);
+  const english=findEn(AR[i]);
+  $('pEn').textContent=english||'English subtitle not available for this line.';
+  $('word').innerHTML='<div class="hint">Tap any Arabic word to see its meaning, the current context, and examples from other sentences.</div>';
+}
+function openPanel(){if(!AR.length)return;C.classList.remove('idle');C.classList.add('open');fillPanel(cur)}
+function closePanel(){C.classList.remove('open')}
+function tick(){
+  if(!$('watch').classList.contains('show')){requestAnimationFrame(tick);return}
+  if(AR.length){
+    const t=v.currentTime,i=idxAt(t);
+    if(i!==cur)show(i);
+    if($('ap').checked&&!v.paused&&cur>=0&&t>=AR[cur].e-0.05&&pausedFor!==cur){pausedFor=cur;v.pause()}
+    if(v.paused===false&&cur!==pausedFor)pausedFor=-1;
+  }
+  if(v.duration&&!seeking)$('seek').value=v.currentTime/v.duration*1000;
+  $('tc').textContent=fmt(v.currentTime);$('td').textContent=fmt(v.duration||0);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// ---------- Controls ----------
+const toggle=()=>{if(v.src)v.paused?v.play():v.pause()};
+$('pp').onclick=toggle;$('cont').onclick=()=>v.play();
+v.onclick=toggle;v.ondblclick=()=>fs();
+v.addEventListener('play',()=>{$('pp').classList.add('playing');C.classList.add('playing');C.classList.remove('paused');closePanel();wake()});
+v.addEventListener('pause',()=>{$('pp').classList.remove('playing');C.classList.remove('playing');C.classList.add('paused');C.classList.remove('idle');if(!C.classList.contains('open'))openPanel()});
+function go(i){if(i<0||i>=AR.length)return;pausedFor=-1;v.currentTime=AR[i].s+0.01;show(i);v.play()}
+function step(d){ // move line while paused, keep panel open
+  const i=cur+d;if(i<0||i>=AR.length)return;
+  pausedFor=-1;v.currentTime=AR[i].s+0.01;show(i);if(v.paused)fillPanel(i);
+}
+$('prev').onclick=()=>go(Math.max(0,cur-1));$('next').onclick=()=>go(cur+1);
+$('rep').onclick=()=>go(Math.max(cur,0));
+$('pprev').onclick=()=>step(-1);$('pnext').onclick=()=>step(1);
+$('seek').oninput=e=>{seeking=true;if(v.duration)v.currentTime=e.target.value/1000*v.duration};
+$('seek').onchange=()=>{seeking=false};
+function off(d){enOff=Math.round((enOff+d)*10)/10;$('eno').textContent=(enOff>0?'+':'')+enOff+'s';
+  if(cur>=0){const t=findEn(AR[cur]);$('en').textContent=t;$('pEn').textContent=t||'—'}}
+$('enm').onclick=()=>off(-0.5);$('enp').onclick=()=>off(0.5);
+
+// full screen (falls back to a fixed overlay where the browser blocks it, e.g. iPhone)
+function fs(){
+  const d=document;
+  if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen).call(d);
+  else if(C.classList.contains('pfs'))C.classList.remove('pfs');
+  else if(C.requestFullscreen)C.requestFullscreen().catch(()=>C.classList.add('pfs'));
+  else if(C.webkitRequestFullscreen)C.webkitRequestFullscreen();
+  else C.classList.add('pfs');
+}
+$('fs').onclick=fs;
+
+// auto-hide controls while playing
+function wake(){C.classList.remove('idle');clearTimeout(idleT);idleT=setTimeout(()=>{if(!v.paused)C.classList.add('idle')},2600)}
+['mousemove','touchstart','click'].forEach(ev=>C.addEventListener(ev,wake,{passive:true}));
+document.addEventListener('click',e=>{const b=e.target.closest('#watch button');if(b)b.blur()});
+document.addEventListener('keydown',e=>{
+  if(!$('watch').classList.contains('show')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
+  if(e.target.classList&&e.target.classList.contains('w'))return;
+  if(e.code==='Space'){e.preventDefault();toggle()}
+  else if(e.key==='ArrowLeft'){e.preventDefault();v.paused?step(-1):go(Math.max(0,cur-1))}
+  else if(e.key==='ArrowRight'){e.preventDefault();v.paused?step(1):go(cur+1)}
+  else if(e.key==='r'||e.key==='R')go(Math.max(cur,0));
+  else if(e.key==='f'||e.key==='F')fs();
+  wake();
+});
+
+// ---------- Word lookup ----------
+function pickWord(tok,k,i){
+  v.pause();pausedFor=i;
+  if(!C.classList.contains('open'))openPanel();
+  document.querySelectorAll('#pAr .w').forEach(s=>s.classList.toggle('sel',s.dataset.k==k));
+  lookup(tok,i);
+}
+function setWordPanelLoading(word,i){
+  const P=$('word');
+  const current=AR[i]?.t||'';
+  const en=findEn(AR[i]||{});
+  LW={word,i};
+  P.innerHTML=`<h2>${escapeHtml(word)}</h2><button class="go saveW" id="saveW">+ Save to flashcards</button>
+    <div class="contextBox"><div class="contextLabel">In this sentence</div><div class="contextAr">${escapeHtml(current)}</div>${en?`<div class="contextEn">${escapeHtml(en)}</div>`:''}</div>
+    <div id="mean" class="hint load">Looking up dictionary entry…</div>
+    <div id="dictExamples"></div>`;
+  $('saveW').onclick=saveWord;
+}
+async function translateArabic(text){
+  const q=String(text||'').trim();
+  if(!q)return '';
+  try{
+    const r=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(q)+'&langpair=ar|en');
+    if(!r.ok)return '';
+    const d=await r.json();
+    return String(d?.responseData?.translatedText||'').trim();
+  }catch(e){return ''}
+}
+async function translateExamples(examples){
+  return Promise.all((examples||[]).map(async e=>{
+    if(e.en)return e;
+    const en=await translateArabic(e.ar);
+    return {...e,en};
+  }));
+}
+
+// ---------- Word lookup (multi-source: Wiktionary MediaWiki API -> FreeDictionaryAPI.com -> MyMemory) ----------
+async function wapi(p,h='en'){
+  const r=await fetch('https://'+h+'.wiktionary.org/w/api.php?'+new URLSearchParams({format:'json',formatversion:'2',origin:'*',...p}));
+  if(!r.ok)throw new Error('HTTP '+r.status);return r.json();
+}
+// Candidate dictionary titles for a clicked form: strips diacritics, clitic prefixes (و ف ب ل ك س ال) and pronoun/plural suffixes
+function variants(word){
+  const w=clean(word),nd=w.replace(DIAC,''),P=['ال','و','ف','ب','ل','ك','س'];
+  const S=['ها','هم','هن','هما','كما','كم','كن','ني','نا','وا','ون','ين','ان','ات','ه','ك','ي','ة','ا','ت'];
+  let stems=[nd],all=new Set([nd]);
+  for(let k=0;k<3;k++){const nx=[];stems.forEach(s=>P.forEach(p=>{if(s.startsWith(p)&&s.length-p.length>=3){const t=s.slice(p.length);if(!all.has(t)){all.add(t);nx.push(t)}}}));stems=nx}
+  const out=[w,nd];
+  [...all].forEach(s=>{out.push(s);S.forEach(x=>{if(s.endsWith(x)&&s.length-x.length>=2){const t=s.slice(0,-x.length);out.push(t,t+'ة')}})});
+  [...out].forEach(s=>{if(s.startsWith('ا')){out.push('أ'+s.slice(1),'إ'+s.slice(1))}});
+  return [...new Set(out.filter(x=>x&&x.length>=2))].slice(0,30);
+}
+function splitTop(s){const o=[];let d=0,c='';for(let i=0;i<s.length;i++){const t=s.substr(i,2);if(t==='{{'||t==='[['){d++;c+=t;i++}else if(t==='}}'||t===']]'){d--;c+=t;i++}else if(s[i]==='|'&&d===0){o.push(c);c=''}else c+=s[i]}o.push(c);return o}
+function tpl(x){
+  const p=x.split('|').map(a=>a.trim()),n=p[0],a=p.slice(1).filter(q=>!/^\w+=/.test(q));
+  const t=(p.find(q=>/^(t|gloss)=/.test(q))||'').replace(/^\w+=/,'');
+  if(/^(m|l|link|mention|m-self|l-self|ll)$/.test(n))return (a[2]||a[1]||'')+(t?' ('+t+')':'');
+  if(/^(lb|lbl|label)$/.test(n))return '('+a.slice(1).join(', ')+')';
+  if(/^(non-gloss definition|n-g|ngd|non-gloss)$/.test(n))return a[0]||'';
+  if(/^(ar-root|root)$/.test(n))return a.filter(q=>q.length<8&&q!=='ar'&&!/^sem/.test(q)).join(' ');
+  if(/^(gloss|gl)$/.test(n))return '('+(a[0]||'')+')';
+  if(/^(inflection of|infl of)$/.test(n))return 'inflected form of '+(a[1]||'');
+  if(/^(der|inh|bor|cog|der\+|inh\+|bor\+)$/.test(n))return (a[2]||'')+(t?' ('+t+')':'');
+  if(/^(af|affix|suf|suffix|pre|prefix|com|compound)$/.test(n))return a.slice(1).join(' + ');
+  return '';
+}
+function wt(s){
+  s=String(s||'').replace(/<ref[\s\S]*?<\/ref>|<ref[^>]*\/>|<!--[\s\S]*?-->/g,'').replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g,'$1');
+  for(let n=0;n<6&&/\{\{[^{}]*\}\}/.test(s);n++)s=s.replace(/\{\{([^{}]*)\}\}/g,(_,x)=>tpl(x));
+  return s.replace(/'{2,}/g,'').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').replace(/\(\s*\)/g,'').trim();
+}
+function parseEx(l){
+  const m=l.match(/^#[:*]+\s*\{\{(?:ux|uxi|usex)\|ar\|([\s\S]*)\}\}\s*$/);if(!m)return null;
+  const named={},pos=[];splitTop(m[1]).forEach(x=>{const k=x.match(/^\s*(\w+)\s*=([\s\S]*)$/);k?named[k[1]]=k[2]:pos.push(x)});
+  const ar=wt(pos[0]),en=wt(named.t||named.translation||pos[1]);return ar?{ar,en}:null;
+}
+const isForm=s=>/\bform of\b/i.test(s.meaning||'');
+function parseEntry(title,text){
+  const m=text.match(/(?:^|\n)==\s*Arabic\s*==\s*\n([\s\S]*?)(?=\n==[^=]|$)/);if(!m)return null;
+  const sec=m[1];let root='';
+  const rm=sec.match(/\{\{ar-root\|([^}]*)\}\}/)||sec.match(/\{\{root\|ar\|[^|}]*\|([^}]*)\}\}/);
+  if(rm)root=rm[1].split('|').filter(x=>x&&!/=/.test(x)).map(x=>x.trim()).join(' ');
+  const lm=sec.match(/\{\{(?:inflection of|infl of|alternative form of|alt form|alt form of|plural of|feminine of|masculine of|singular of|verbal noun of)\|ar\|([^|}]+)/);
+  const em=sec.match(/===\s*Etymology(?:\s*\d+)?\s*===\s*\n([\s\S]*?)(?=\n===|$)/);
+  const pm=sec.match(/={3,4}\s*(Noun|Verb|Adjective|Adverb|Preposition|Pronoun|Particle|Proper noun|Conjunction|Interjection|Numeral)[^=]*=+/);
+  const senses=[];let cur=null;
+  sec.split('\n').forEach(l=>{
+    if(/^#(?![:*#])/.test(l)){const mean=wt(l.replace(/^#\s*/,''));cur=mean?{meaning:mean,examples:[]}:null;if(cur)senses.push(cur)}
+    else if(cur&&/^#[:*]+/.test(l)){const e=parseEx(l);if(e&&cur.examples.length<3)cur.examples.push(e)}
+  });
+  return {title,root,lemma:lm?lm[1].trim():'',pos:pm?pm[1]:'',etymology:em?wt(em[1]):'',senses};
+}
+async function fetchEntries(titles){
+  const d=await wapi({action:'query',prop:'revisions',rvprop:'content',rvslots:'main',redirects:'1',titles:titles.join('|')});
+  const q=d.query||{},red=q.redirects||[],nz=q.normalized||[],out=[];
+  (q.pages||[]).forEach(pg=>{
+    if(pg.missing)return;const t=pg.revisions?.[0]?.slots?.main?.content;if(!t)return;
+    const e=parseEntry(pg.title,t);if(!e)return;
+    const r=titles.findIndex(c=>{const n=(nz.find(z=>z.from===c)||{to:c}).to;return n===pg.title||red.some(x=>x.from===n&&x.to===pg.title)});
+    e.rank=r<0?99:r;out.push(e);
+  });
+  return out.sort((a,b)=>a.rank-b.rank);
+}
+async function rootFamily(root){
+  const d=await wapi({action:'query',list:'categorymembers',cmtitle:'Category:Arabic terms belonging to the root '+root,cmnamespace:'0',cmlimit:'40'});
+  return (d.query?.categorymembers||[]).map(x=>x.title);
+}
+async function fdApi(word){
+  const r=await fetch('https://freedictionaryapi.com/api/v1/entries/ar/'+encodeURIComponent(word));
+  if(!r.ok)throw new Error('HTTP '+r.status);const d=await r.json(),senses=[];
+  (d.entries||[]).forEach(e=>(e.senses||[]).forEach(s=>{if(s.definition)senses.push({meaning:String(s.definition),examples:(s.examples||[]).map(x=>({ar:typeof x==='string'?x:(x.text||x.example||''),en:''})).filter(x=>x.ar).slice(0,2)})}));
+  return {senses,pos:d.entries?.[0]?.partOfSpeech||''};
+}
+async function resolveWord(word){
+  const c=variants(word);let r={senses:[],sources:[]};
+  try{
+    const es=await fetchEntries(c);
+    const e=es.find(x=>x.senses.length&&!x.senses.every(isForm))||es.find(x=>x.senses.length)||es[0];
+    if(e){
+      r={...e,matched:e.title,sources:['Wiktionary']};
+      if((!e.senses.length||e.senses.every(isForm)||!e.root)&&e.lemma){
+        const L=(await fetchEntries([e.lemma,e.lemma.replace(DIAC,'')])).find(x=>x.senses.length||x.root);
+        if(L){r.formOf=e.lemma;r.root=r.root||L.root;r.etymology=r.etymology||L.etymology;r.pos=r.pos||L.pos;
+          if(!e.senses.length||e.senses.every(isForm))r.senses=L.senses}
+      }
+    }
+  }catch(e){}
+  if(!r.senses.length){
+    for(const w of c.slice(0,3)){try{const f=await fdApi(w);if(f.senses.length){r={...r,...f,matched:w,sources:['FreeDictionaryAPI.com (Wiktionary data)']};break}}catch(e){}}
+  }
+  if(!r.senses.length){
+    const t=await translateArabic(clean(word).replace(DIAC,''));
+    if(t)r={...r,senses:[{meaning:t+' (machine translation, may be rough)',examples:[]}],sources:['MyMemory']};
+  }
+  r.senses=await Promise.all(r.senses.slice(0,8).map(async(s,k)=>k<3?{...s,examples:await translateExamples(s.examples)}:s));
+  return r;
+}
+// ---------- AI lookup (context-aware; needs the user's own API key, stored only in this browser) ----------
+const AIK={get:()=>{try{return JSON.parse(localStorage.getItem('aiCfg')||'null')}catch(e){return null}},set:c=>{try{localStorage.setItem('aiCfg',JSON.stringify(c))}catch(e){}}};
+const AI_MODELS={gemini:'gemini-2.5-flash',anthropic:'claude-haiku-4-5-20251001',openai:'gpt-4o-mini'};
+async function aiLookup(word,i,noCtx,cfg){
+  const ar=noCtx?'':(AR[i]?.t||''),en=noCtx?'':(findEn(AR[i]||{})||'');
+  const prompt=`You are an Arabic dictionary for a learner watching a movie. Subtitles have NO harakat, so use the sentence to decide the correct vowelization and meaning.
+Clicked word: ${word}
+${ar?'Arabic sentence: '+ar:'(no sentence context)'}
+${en?'English subtitle (may be slightly misaligned): '+en:''}
+Reply with ONLY JSON, no markdown:
+{"word_vocalized":"word with full harakat as used HERE","lemma":"dictionary form with harakat","pos":"noun/verb/... (for verbs: tense, person)","root":"letters separated by spaces e.g. ك ت ب","meaning_in_context":"short English meaning that fits this sentence","other_meanings":["up to 4 other common meanings"],"origin":"1-2 sentences: how the root and pattern give this meaning","examples":[{"ar":"short vocalized Arabic sentence","en":"English"},{"ar":"","en":""}]}`;
+  let txt='';
+  if(cfg.provider==='gemini'){
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(cfg.model)+':generateContent?key='+encodeURIComponent(cfg.key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json'}})});
+    const d=await r.json();if(!r.ok)throw new Error(d?.error?.message||'Gemini HTTP '+r.status);
+    txt=d.candidates?.[0]?.content?.parts?.map(p=>p.text).join('')||'';
+  }else if(cfg.provider==='anthropic'){
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':cfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:cfg.model,max_tokens:1000,messages:[{role:'user',content:prompt}]})});
+    const d=await r.json();if(!r.ok)throw new Error(d?.error?.message||'Anthropic HTTP '+r.status);
+    txt=(d.content||[]).map(p=>p.text||'').join('');
+  }else{
+    const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},body:JSON.stringify({model:cfg.model,response_format:{type:'json_object'},messages:[{role:'user',content:prompt}]})});
+    const d=await r.json();if(!r.ok)throw new Error(d?.error?.message||'OpenAI HTTP '+r.status);
+    txt=d.choices?.[0]?.message?.content||'';
+  }
+  const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('AI returned no JSON');
+  return JSON.parse(m[0]);
+}
+let lookSeq=0;
+async function lookup(tok,i,noCtx){
+  const word=clean(tok),my=++lookSeq,cfg=AIK.get(),ok=()=>my===lookSeq&&document.contains($('mean'));
+  setWordPanelLoading(word,i);
+  const M=$('mean');M.className='';
+  M.innerHTML='<div id="aiBox" class="hint load">'+(cfg?.key?'Asking AI (using the sentence for context)…':'')+'</div><details id="dictWrap" open><summary>Dictionary entry</summary><div id="dictBox" class="hint load">Looking up…</div></details><div id="aiSet"></div>';
+  aiSettings($('aiSet'),cfg,()=>lookup(tok,i,noCtx));
+  const useAI=!!cfg?.key;let aiRoot='';
+  if(useAI){
+    const ak='ai:'+cfg.provider+':'+(noCtx?'x':i)+':'+norm(word);
+    (async()=>{
+      let a=cache.get(ak);
+      try{if(!a){a=await aiLookup(word,i,noCtx,cfg);cache.set(ak,a)}}
+      catch(e){if(ok()){const B=$('aiBox');B.className='';B.innerHTML='<div class="errorNote">AI failed: '+escapeHtml(e.message||e)+'. Check the key/model in AI settings below.</div>'}return}
+      if(ok()){LW.ai=a;renderAI($('aiBox'),a,word,i);const d=$('dictWrap');if(d)d.open=false}
+    })();
+  }
+  const dk='dict2:'+norm(word);let r=cache.get(dk);
+  if(!r){r=await resolveWord(word).catch(()=>({senses:[],sources:[]}));if(r.senses.length)cache.set(dk,r)}
+  if(!ok())return;
+  LW.dict=r;
+  const D=$('dictBox');D.className='';
+  renderMean(D,useAI?{...r,root:''}:r,word,i);
+  if(!useAI){const B=$('aiBox');B.className='';B.innerHTML='<div class="ptag">Dictionaries can\'t pick the right meaning without harakat. Add an AI key below to get context-aware meanings and roots.</div>'}
+}
+function renderAI(B,a,word,i){
+  B.className='';const e=escapeHtml;let h='';
+  h+=`<div class="aiWord">${e(a.word_vocalized||word)}</div><div class="m">${e(a.meaning_in_context||'')}</div>`;
+  if(a.lemma&&norm(a.lemma)!==norm(word))h+=`<div class="ptag">Dictionary form: <b>${e(a.lemma)}</b></div>`;
+  if(a.pos)h+=`<div class="ptag">${e(a.pos)}</div>`;
+  if(a.root)h+=`<div class="rootBox"><div class="contextLabel">Root</div><div class="rootAr">${e(a.root)}</div>${a.origin?`<div class="ptag" style="line-height:1.6">${e(a.origin)}</div>`:''}<div id="fam" class="chips" data-root="${e(a.root)}"></div></div>`;
+  if((a.other_meanings||[]).length)h+=`<h3>Other meanings</h3><ol class="senses">${a.other_meanings.slice(0,4).map(x=>`<li>${e(x)}</li>`).join('')}</ol>`;
+  const ex=(a.examples||[]).filter(x=>x&&x.ar);
+  if(ex.length)h+='<h3>Used in other sentences</h3>'+ex.slice(0,3).map(x=>`<div class="dictExample"><div class="a">${e(x.ar)}</div><div class="e">${e(x.en||'')}</div></div>`).join('');
+  h+='<div class="apiNote">AI-generated: usually right, but double-check unusual words.</div>';
+  B.innerHTML=h;
+  if(a.root)rootFamily(a.root.trim()).then(list=>{
+    const f=$('fam');if(!f||f.dataset.root!==a.root||!list.length)return;
+    f.innerHTML=list.map(t=>`<span class="chip" data-w="${e(t)}">${e(t)}</span>`).join('');
+    f.querySelectorAll('.chip').forEach(c=>c.onclick=()=>lookup(c.dataset.w,i,true));
+  }).catch(()=>{});
+}
+function aiSettings(box,cfg,again){
+  const c=cfg||{provider:'gemini',model:AI_MODELS.gemini,key:''};
+  box.innerHTML=`<details class="aiSet" ${cfg?.key?'':'open'}><summary>AI settings</summary>
+  <select id="aiProv"><option value="gemini">Google Gemini (free tier)</option><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI</option></select>
+  <input id="aiModel" placeholder="model"><input id="aiKey" type="password" placeholder="API key (stored only in this browser)">
+  <button id="aiSave" class="go" style="height:32px;padding:0 14px;margin-top:6px">Save &amp; retry</button>
+  <div class="apiNote">Free Gemini key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Only the clicked word and its subtitle line are sent to the provider you pick.</div></details>`;
+  const P=box.querySelector('#aiProv'),Mo=box.querySelector('#aiModel'),K=box.querySelector('#aiKey');
+  P.value=c.provider;Mo.value=c.model;K.value=c.key;
+  P.onchange=()=>{Mo.value=AI_MODELS[P.value]};
+  box.querySelector('#aiSave').onclick=()=>{AIK.set({provider:P.value,model:Mo.value.trim()||AI_MODELS[P.value],key:K.value.trim()});again()};
+}
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function stripHtml(s){const d=document.createElement('div');d.innerHTML=String(s||'');return(d.textContent||d.innerText||'').replace(/\s+/g,' ').trim();}
+function renderMean(M,r,word,i){
+  M.className='';const w=encodeURIComponent(clean(word)),e=escapeHtml;
+  if(!r||!r.senses.length){
+    M.innerHTML=`<div class="errorNote">No entry found in any source for this form.</div><div class="apiNote"><a href="https://en.wiktionary.org/wiki/${w}" target="_blank" rel="noopener">Wiktionary ↗</a> · <a href="https://translate.google.com/?sl=ar&tl=en&text=${w}" target="_blank" rel="noopener">Google Translate ↗</a></div>`;return;
+  }
+  const S=r.senses.filter(s=>s.meaning),ex=[];S.forEach(s=>(s.examples||[]).forEach(x=>ex.push(x)));
+  let h=`<div class="m">${e(S[0].meaning)}</div>`;
+  if(r.matched&&norm(r.matched)!==norm(word))h+=`<div class="ptag">Matched dictionary form: <b>${e(r.matched)}</b></div>`;
+  if(r.formOf)h+=`<div class="ptag">Inflected form of <b>${e(r.formOf)}</b></div>`;
+  if(r.pos)h+=`<div class="ptag">Part of speech: ${e(r.pos)}</div>`;
+  if(r.root)h+=`<div class="rootBox"><div class="contextLabel">Root</div><div class="rootAr">${e(r.root)}</div><div id="fam" class="chips" data-root="${e(r.root)}"></div></div>`;
+  if(S.length>1)h+=`<h3>Other meanings</h3><ol class="senses">${S.slice(1,7).map(s=>`<li>${e(s.meaning)}</li>`).join('')}</ol>`;
+  if(r.etymology)h+=`<h3>Origin</h3><div class="ptag" style="line-height:1.6">${e(r.etymology.slice(0,500))}</div>`;
+  if(ex.length)h+='<h3>Used in other sentences</h3>'+ex.slice(0,6).map(x=>`<div class="dictExample"><div class="a">${e(x.ar)}</div><div class="e">${e(x.en||'English translation unavailable')}</div></div>`).join('');
+  h+=`<div class="apiNote">Source: ${e((r.sources||[]).join(', '))}. <a href="https://en.wiktionary.org/wiki/${w}" target="_blank" rel="noopener">Wiktionary ↗</a></div>`;
+  M.innerHTML=h;
+  if(r.root)rootFamily(r.root).then(list=>{
+    const f=$('fam');if(!f||f.dataset.root!==r.root||!list.length)return;
+    f.innerHTML=list.map(t=>`<span class="chip" data-w="${e(t)}">${e(t)}</span>`).join('');
+    f.querySelectorAll('.chip').forEach(c=>c.onclick=()=>lookup(c.dataset.w,i));
+  }).catch(()=>{});
+}
+// ---------- Appearance + subtitle size ----------
+function applySubScale(){
+  subScale=Math.min(1.6,Math.max(.65,Math.round(subScale*20)/20));
+  document.documentElement.style.setProperty('--subscale',subScale);
+  $('fontSizeLabel').textContent=Math.round(subScale*100)+'%';
+  localStorage.setItem('arabicSubScale',subScale);
+}
+$('fontDown').onclick=()=>{subScale-=.1;applySubScale()};
+$('fontUp').onclick=()=>{subScale+=.1;applySubScale()};
+applySubScale();
+
+
+pstatus();
+
+// open a movie / episode from the phone server in the player
+async function openItem(it){
+ try{toast("Loading…");
+  const get=async u=>{if(!u)return[];try{return parseSrt(await fetchText(u))}catch(e){return[]}};
+  let lx=null;if(it.lx){try{lx=await(await fetch(it.lx)).json()}catch(e){}}
+  const r=await Promise.all([get(it.ar),get(it.en)]);let A=r[0],E=r[1];
+  const L=lx&&lx.cues&&lx.cues.length?lx.cues:null;
+  if(L){if(!A.length)A=L.map(c=>({s:c.s,e:c.e,t:(c.t||[]).map(k=>k.w).join(" ")})).filter(c=>c.t);
+   if(!E.length)E=L.filter(c=>c.tr).map(c=>({s:c.s,e:c.e,t:c.tr}))}
+  AR=A;EN=E;cur=-1;pausedFor=-1;enOff=0;$("eno").textContent="0s";
+  closePanel();show(-1);
+  v.src=lpAbs(it.video);C.classList.add("loaded");
+  curTitle=it.title+(it.sub?" · "+it.sub:"");
+  pstatus();nav("watch");
+  if(!A.length)toast("No Arabic subtitle file found. Put NAME.ar.srt next to the video.")}
+ catch(e){toast("Could not load: "+e.message)}}
+// watch-time tracking for the profile stats
+let lastT=Date.now(),scT=0;setInterval(()=>{const n=Date.now(),dt=(n-lastT)/1000;lastT=n;if(!v.paused&&!v.ended&&$("watch").classList.contains("show"))day().sec+=dt;if(++scT%50==0)sv("lp_log",log)},100);
+
+// ---- word panel
+function say(txt){try{const u=new SpeechSynthesisUtterance(txt);u.lang="ar-SA";u.rate=.85;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+// ---- SRS (SM-2 style): Again resets; Hard/Good/Easy grow interval
+let q=[],shown=false;
+const due=()=>vocab.filter(v=>v.due<=today());
+function rate_(v,r){
+ if(r==0){v.ivl=0;v.ease=Math.max(1.3,v.ease-.2);v.due=today();v.reps=0}
+ else{v.reps++;v.ivl=v.reps==1?(r==3?4:1):Math.max(1,Math.round(v.ivl*v.ease*(r==1?.8:r==3?1.4:1)));v.ease+=r==3?.1:r==1?-.1:0;
+  const d=new Date();d.setDate(d.getDate()+v.ivl);v.due=d.toISOString().slice(0,10)}
+ v.hist.push([today(),r]);day().rev++;sv("lp_v",vocab);sv("lp_log",log)}
+function cards(){const F=$("fc");F.innerHTML="";
+ if(!q.length)q=due().map(v=>v.lemma);
+ const v=vocab.find(x=>x.lemma==q[0]&&x.due<=today());
+ if(!v){q=[];F.innerHTML="<div class='big'>🎉</div><p style='text-align:center'>"+(vocab.length?"No cards due. Back to watching?":"Save words from the Watch tab first.")+"</p>";return}
+ F.innerHTML="<div class='mu'>"+q.length+" left</div><div class='big'>"+v.lemma+"</div>"+(shown?"<p style='text-align:center'><b>"+v.tr+"</b></p><p class='ar' style='font-size:20px'>"+v.sent+"</p><p class='mu' style='text-align:center'>"+v.sentTr+"</p>":"")+"<div class='bar' style='justify-content:center'></div>";
+ const bar=F.lastChild;
+ if(!shown){const b=document.createElement("button");b.className="pri";b.textContent="Show answer";b.onclick=()=>{shown=true;cards()};bar.append(b)}
+ else["Again","Hard","Good","Easy"].forEach((n,i)=>{const b=document.createElement("button");b.textContent=n;b.onclick=()=>{rate_(v,i);q.shift();if(i==0)q.push(v.lemma);shown=false;cards()};bar.append(b)})}
+
+// ---- pages
+function render(){
+ const dd=due().length,r=day().rev,g=+$("goal").value,streak=(()=>{let s=0,d=new Date();while(log[d.toISOString().slice(0,10)]?.rev>0||(s==0&&!log[d.toISOString().slice(0,10)]?.rev&&(d.setDate(d.getDate()-1),log[d.toISOString().slice(0,10)]?.rev>0))){s++;d.setDate(d.getDate()-1)}return s})();
+ const mast=vocab.filter(v=>v.ivl>=21).length,sec=Math.round(day().sec/60);
+ const box=(n,l)=>"<div class='card'><div class='num'>"+n+"</div><div class='mu'>"+l+"</div></div>";
+ $("hdue").textContent=dd?dd+" due today":"All caught up";$("hgrid").innerHTML=box("🔥 "+streak,"day streak")+box(r+" / "+g,"reviews today")+box(dd,"cards due")+box(vocab.length,"words saved")+box(mast,"mastered (21d+)")+box(sec+" min","watched today");
+ $("unlock").innerHTML=r>=g?"🔓 <b>New content unlocked.</b> Today's goal is done.":"🔒 Review "+(g-r)+" more card(s) to unlock today's recommended content. <span class='mu'>(Locking is only a nudge here.)</span>";
+ $("vt").innerHTML="<tr><th>Word</th><th>Meaning</th><th>Seen</th><th>Next</th></tr>"+vocab.map(v=>"<tr><td class='ar' style='font-size:20px'>"+v.lemma+"</td><td>"+v.tr+"<div class='mu'>"+v.sentTr+"</div></td><td>"+v.n+"</td><td>"+v.due+"</td></tr>").join("")||"";
+ if(!vocab.length)$("vt").innerHTML="<tr><td class='mu'>No words yet. Click a word while watching.</td></tr>";
+ const rv=vocab.reduce((a,v)=>a+v.hist.length,0),good=vocab.reduce((a,v)=>a+v.hist.filter(h=>h[1]>=2).length,0),tot=Object.values(log).reduce((a,d)=>a+d.sec,0);
+ $("sgrid").innerHTML=box(Math.round(tot/60)+" min","total watch time")+box(vocab.length,"words saved")+box(rv,"reviews done")+box(rv?Math.round(good/rv*100)+"%":"–","accuracy (Good/Easy)")+box(mast,"mastered");
+ let c="";for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=d.toISOString().slice(0,10),n=log[k]?.rev||0;c+="<div title='"+k+": "+n+"' style='height:"+Math.min(100,n*8+2)+"%'></div>"}$("chart").innerHTML=c;
+ fun(streak,mast,r,g);if($("cards").classList.contains("show"))cards()}
+$("goal").onchange=render;
+
+// ---- library
+const TR='<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>';
+const ROWS=[["Movies","Learn from films","Movie","MOVIE",[["Daily Phrases","A1","w","#1f5f7a,#0b1e2b"],["Import Your Own Film","Your file","w","#7a3b1f,#1b0f0a"],["Licensed Catalog","Soon","","#3b2f6b,#12102a"],["Public Domain Films","Soon","","#2f5d3a,#0d1a10"]]],
+["Trending TV Shows","Series built for listening practice","TV Show","TV",[["Beginner Dialogues","A1","w","#6b1f2f,#1a0a0e"],["Import An Episode","Your file","w","#1f4f6b,#0a1620"],["Licensed Catalog","Soon","","#5a4a1f,#1a150a"]]],
+["Books","Read with tap-to-translate","Book","BOOK",[["Public Domain Arabic","Soon","","#4a2f6b,#150f22"],["Import EPUB","Soon","","#2f5d5a,#0d1a19"]]],
+["Comics","Dialogue bubbles + OCR","Comic","COMIC",[["Public Domain Comics","Soon","","#6b2f4a,#220f18"],["Import Pages","Soon","","#3a5a2f,#121a0d"]]]];
+let LIBD={movies:[],shows:[]};
+const PAL=["#1f5f7a,#0b1e2b","#7a3b1f,#1b0f0a","#6b1f2f,#1a0a0e","#3b2f6b,#12102a","#2f5d3a,#0d1a10","#5a4a1f,#1a150a"];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function lib(){const R=$("rows");R.innerHTML="";
+ const rows=ROWS.map(r=>r.slice());
+ [[0,LIBD.movies],[1,LIBD.shows]].forEach(z=>{if(z[1].length)rows[z[0]][4]=z[1].concat(ROWS[z[0]][4].filter(x=>x[2]))});
+ rows.forEach(r=>{
+  const h=document.createElement("div");h.className="rh";h.innerHTML="<div><h2>"+TR+r[0]+"</h2><div class='mu'>"+r[1]+"</div></div><div class='arr'><button aria-label='Previous'>‹</button><button aria-label='Next'>›</button></div>";
+  const row=document.createElement("div");row.className="row";
+  const bs=h.querySelectorAll("button");bs[0].onclick=()=>row.scrollBy({left:-360,behavior:"smooth"});bs[1].onclick=()=>row.scrollBy({left:360,behavior:"smooth"});
+  r[4].forEach((x,xi)=>{const it=Array.isArray(x)?null:x,c=document.createElement("div"),
+   name=it?it.title:x[0],lvl=it?(it.ar?(it.en?"AR + EN":"AR"):"No subs"):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
+   c.className="pc"+(on?"":" soon");
+   const bg=(it&&it.poster?"url('"+it.poster+"') center/cover,":"")+"linear-gradient(160deg,"+g[0]+","+g[1]+")";
+   c.innerHTML="<div class='poster' style=\"background:"+bg+"\"><span class='tag'>"+r[3]+"</span><span class='lv"+(on&&lvl!="No subs"?"":" g")+"'>"+esc(lvl)+"</span>"+(it&&it.poster?"":esc(name))+"</div><div class='pt'>"+esc(name)+"</div><div class='pm'>"+esc(it&&it.sub?it.sub:r[2])+" · Arabic</div>";
+   if(on)c.onclick=()=>it?openItem(it):nav("watch");row.append(c)});
+  R.append(h,row)})}
+let SV={yt:0,ai:0,lib:0};
+// ---- socials
+const PL=[["yt","YouTube","▶","#ff3b3b,#8f0f1a","yt","https://www.youtube.com/results?search_query="],["tt","TikTok","♪","#1fb5b0,#111","vert","https://www.tiktok.com/search?q="],["fb","Facebook","f","#2f7bff,#12338f","fb","https://www.facebook.com/search/videos?q="],["ig","Instagram","◎","#f9a03c,#c13584","ig","https://www.instagram.com/explore/tags/"],["x","X","X","#3a3d41,#0b0b0c","x","https://x.com/search?q="],["aj","Al Jazeera","ج","#c8a24a,#5a3b0f","news","https://www.google.com/search?q=site:aljazeera.net+"],["bbc","BBC Arabic","B","#d23b3b,#6b1010","news","https://www.google.com/search?q=site:bbc.com/arabic+"],["f24","France 24","24","#2f6bd6,#0b1e4b","news","https://www.google.com/search?q=site:france24.com/ar+"]];
+const T=[["تعلّم العربية في عشر دقائق","Learn Arabic in 10 minutes"],["أشهر العبارات اليومية","Most common daily phrases"],["جولة في أسواق القاهرة","A tour of Cairo's markets"],["طريقة تحضير القهوة العربية","How to make Arabic coffee"],["حوار بسيط في المطعم","A simple dialogue at a restaurant"],["قصة قصيرة للمبتدئين","A short story for beginners"],["أخبار اليوم بلغة مبسطة","Today's news in simple language"],["كيف تنطق حرف الضاد؟","How to pronounce the letter ض"]];
+const VW=["1.2M","340K","89K","2.4M","12K","560K","98K","1.1M"],TM=["2h","1d","3d","5h","1w","12h","4d","2w"],DU=["10:24","3:12","8:45","5:01","12:30","2:48","6:15","4:09"],CH=["لغتي","Arabic Daily","مقهى العربية","Lingua Picks"];
+const GR=["#1f5f7a,#0b1e2b","#7a3b1f,#1b0f0a","#6b1f2f,#1a0a0e","#2f5d3a,#0d1a10","#3b2f6b,#12102a","#5a4a1f,#1a150a"],bg=i=>"background:radial-gradient(circle at 80% 15%,rgba(255,255,255,.25),transparent 50%),linear-gradient(160deg,"+GR[i%6]+")";
+let P=null,tab="home",V=null,Q="";const pi=()=>PL.findIndex(x=>x[0]==P);
+const CM=[["سارة","شكرا على الشرح الرائع!","Thanks for the great explanation!"],["أحمد","هل يمكنك عمل جزء ثان؟","Can you make a part two?"],["ليلى","أحببت هذا كثيرا","I loved this so much"]],LKS=["12K","3.4K","890","24K","1.2K","5.6K","980","11K"];
+// ===== BACKEND HOOK: replace API.feed with fetch("/api/"+p+"/feed?tab="+tab+"&q="+q).then(r=>r.json())
+// Item: {id,i,ar,en,ch,subs,v,t,d,lk,cm,g,th:"thumbnail url",vid:"video url"}. If th/vid are set, the UI uses them automatically.
+const API0={feed:async(p,tab,q)=>{const o=PL.findIndex(x=>x[0]==p)*3;return Array.from({length:16},(_,i)=>{const k=(i+o)%8;return{id:p+i,i,ar:T[k][0],en:T[k][1],ch:CH[(i+k)%4],subs:VW[(k+3)%8],v:VW[k],t:TM[k],d:DU[k],lk:LKS[k],cm:CM.length+k*7,g:i+o,th:null,vid:null}}).filter(x=>(!q||(x.ar+x.en).toLowerCase().includes(q.toLowerCase()))&&(tab!="subs"||x.i%2==0))}};
+// ---- real YouTube (server /api/youtube/search, or your own key stored on this phone)
+const YK="lp_ytkey";let YERR="";
+const YQ={Learn:"تعلم اللغة العربية",story:"قصص عربية",coffee:"طبخ عربي",news:"نشرة أخبار"};
+const ytAgo=ms=>{const m=(Date.now()-ms)/6e4;return m<60?Math.max(1,Math.floor(m))+"m":m<1440?Math.floor(m/60)+"h":m<43200?Math.floor(m/1440)+"d":Math.floor(m/43200)+"mo"};
+const ytDur=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+const ytIso=x=>{const m=/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(x||"")||[];return(+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0)};
+const ytDec=x=>{const t=document.createElement("textarea");t.innerHTML=x;return t.value};
+async function ytFetch(q,order,short){
+ if(SV.yt){const j=await(await fetch("/api/youtube/search?q="+encodeURIComponent(q)+"&order="+order+(short?"&short=1":""))).json();if(j.error)throw new Error(j.error);return j.items||[]}
+ const key=ld(YK,"");if(!key)throw new Error("nokey");const A="https://www.googleapis.com/youtube/v3/";
+ const j=await(await fetch(A+"search?part=snippet&type=video&videoEmbeddable=true&maxResults=25&relevanceLanguage=ar&order="+order+(short?"&videoDuration=short":"")+"&q="+encodeURIComponent(q)+"&key="+key)).json();
+ if(j.error)throw new Error((j.error.errors&&j.error.errors[0].reason)||j.error.message);
+ const ids=(j.items||[]).map(i=>i.id.videoId);if(!ids.length)return[];
+ const d=await(await fetch(A+"videos?part=contentDetails&id="+ids.join(",")+"&key="+key)).json(),D={};
+ (d.items||[]).forEach(x=>D[x.id]=ytIso(x.contentDetails.duration));
+ return j.items.map(i=>{const s=i.snippet;return{id:i.id.videoId,title:ytDec(s.title),ch:ytDec(s.channelTitle),img:(s.thumbnails.medium||s.thumbnails.default).url,t:Date.parse(s.publishedAt),dur:D[i.id.videoId]||0}})}
+const API={feed:async(p,tab,q)=>{
+ if(p!="yt")return API0.feed(p,tab,q);
+ YERR="";const short=tab=="shorts",base=q?(YQ[q]||q):short?"#shorts عربي":tab=="subs"?"قصص عربية":"تعلم اللغة العربية للمبتدئين",order=q||tab=="home"?"relevance":"date";
+ const ck="lp_c:"+(SV.yt?"s:":"")+base+"|"+order+"|"+(short?1:0),c=ld(ck,null);let raw;
+ if(c&&Date.now()-c.t<18e5)raw=c.v;
+ else try{raw=await ytFetch(base,order,short);sv(ck,{t:Date.now(),v:raw})}
+ catch(e){const m=e.message;YERR=m=="nokey"?"":"YouTube error: "+m+(/keyInvalid|badRequest/i.test(m)?" — check your API key.":/quota/i.test(m)?" — daily quota used up, try tomorrow.":/referer|ip/i.test(m)?" — key is restricted; remove the restriction.":"");return[]}
+ const keep=raw.filter(v=>q?1:short?v.dur>0&&v.dur<=60:v.dur>60||!v.dur);
+ return keep.map((v,i)=>({id:"yt"+v.id,i,yid:v.id,ar:v.title,en:"",ch:v.ch,subs:"",v:"",t:ytAgo(v.t),d:ytDur(v.dur||0),lk:"Like",cm:0,g:i,th:v.img,vid:null}))}};
+const keyCard="<div class='card'><b>Connect YouTube</b><div class='mu' style='margin:6px 0 10px'>Paste a YouTube Data API v3 key to load real videos. It stays on this phone.</div><input id='kin' placeholder='AIza…' style='width:100%;padding:10px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px'><button class='pri' data-a='ykey'>Save key</button></div>";
+const emptyMsg=()=>(P=="yt"&&!SV.yt&&(!ld(YK,"")||YERR)?keyCard:"")+(YERR||!(P=="yt"&&!SV.yt&&!ld(YK,""))?"<p class='mu'>"+(YERR||"No results.")+"</p>":"");
+const sec=d=>{const a=d.split(":");return+a[0]*60+ +a[1]},tb=x=>x.th?"background:url("+x.th+") center/cover":bg(x.g);
+const av=(x,s)=>"<div class='av' style='"+bg(x.g+3)+(s?";width:"+s+"px;height:"+s+"px;flex-basis:"+s+"px":"")+"'>"+x.ch[0]+"</div>";
+const pic=x=>"<div class='th' style='"+tb(x)+"'>"+art(x)+"</div>",thumb=x=>"<div class='th' style='"+tb(x)+"'>"+art(x)+"<b class='dur'>"+x.d+"</b><span class='pl'>▶</span></div>";
+const med=(x,c)=>x.yid?"<div class='th "+(c||"")+"' style='background:#000'><iframe src='https://www.youtube.com/embed/"+x.yid+"?playsinline=1&rel=0' allow='autoplay; encrypted-media; picture-in-picture; fullscreen' allowfullscreen referrerpolicy='strict-origin-when-cross-origin' style='position:absolute;inset:0;width:100%;height:100%;border:0'></iframe></div>":x.vid?"<video class='th "+(c||"")+"' src='"+x.vid+"' poster='"+(x.th||"")+"' controls autoplay muted playsinline></video>":"<div class='th sim "+(c||"")+"' style='"+tb(x)+"' data-a='tog'>"+art(x)+"<span class='pl'>▶</span><div class='pb'><i style='animation-duration:"+sec(x.d)+"s'></i></div></div>";
+const cmt=c=>"<div class='po' style='align-items:flex-start'><div class='av' style='background:#555'>"+c[0][0]+"</div><div><b>"+c[0]+"</b><div>"+c[1]+"</div><div class='mu'>"+c[2]+"</div></div></div>";
+const cmts=x=>x.yid?"":"<div class='sh'>"+x.cm+" comments</div>"+CM.map(cmt).join("");
+const card=x=>"<div class='vi' data-a='v:"+x.i+"'>"+thumb(x)+"<div class='po' style='margin-top:10px;align-items:flex-start'>"+av(x)+"<div><div class='pt rt' style='margin:0'>"+x.ar+"</div><div class='pm'>"+x.ch+" · "+(x.v?x.v+" views · ":"")+x.t+"</div></div></div></div>";
+const nr=x=>"<div class='nr' data-a='v:"+x.i+"'>"+pic(x)+"<div><div class='rt' style='font-weight:700'>"+x.ar+"</div><div class='pm'>"+x.en+" · "+x.t+"</div></div></div>";
+const tabs=a=>"<div class='bar'>"+a.map(k=>"<button class='"+(tab==k[0]?"on":"")+"' data-a='t:"+k[0]+"'>"+k[1]+"</button>").join("")+"</div>";
+const chips="<div class='shelf'>"+[["","All"],["Learn","Learn"],["story","Stories"],["coffee","Cooking"],["news","News"]].map(c=>"<button data-a='c:"+c[0]+"'>"+c[1]+"</button>").join("")+"</div>";
+const stories="<div class='st9'>"+CH.concat(CH).map((c,i)=>"<div class='av' style='"+bg(i)+"'>"+c[0]+"</div>").join("")+"</div>";
+const feed=it=>"<div class='tt'>"+it.map(x=>"<div class='tv sim"+(x.yid?" ps":"")+"' style='"+tb(x)+"' data-a='"+(x.yid?"v:"+x.i:"tog")+"'>"+art(x)+"<span class='pl'>▶</span><div class='act'>"+av(x,44)+"<span data-t=1>♥<br><small>"+x.lk+"</small></span><span data-a='cm:"+x.i+"'>💬<br><small>"+x.cm+"</small></span><span data-t=1>↗<br><small>Share</small></span></div><div class='cap'><b>@"+x.ch+"</b><div class='rt'>"+x.ar+"</div><small>"+x.en+"</small></div><div class='pb'><i style='animation-duration:"+sec(x.d)+"s'></i></div></div>").join("")+"</div>";
+const fbp=x=>"<div class='card'><div class='po'>"+av(x)+"<div><b>"+x.ch+"</b><div class='mu'>"+x.t+" · 🌐</div></div></div><div class='rt' style='font-size:18px;margin-bottom:8px'>"+x.ar+"</div>"+med(x)+"<div class='mu' style='margin:8px 0'>👍❤️ "+x.lk+" · "+x.cm+" comments</div><div class='shelf' style='margin:0'><button data-t=1>👍 Like</button><button data-a='cm:"+x.i+"'>💬 Comment</button><button data-t=1>↗ Share</button></div></div>";
+const igp=x=>"<div class='card' style='padding:0;overflow:hidden'><div class='po' style='padding:10px 10px 0'>"+av(x,32)+"<b>"+x.ch+"</b></div>"+med(x,"sq")+"<div style='padding:10px'><div class='bar' style='margin:0 0 6px;gap:16px;font-size:22px'><span data-t=1>♥</span><span data-a='cm:"+x.i+"'>💬</span><span data-t=1>↗</span><span data-t=1>🔖</span></div><b>"+x.lk+" likes</b><div class='rt'>"+x.ar+"</div><div class='mu' data-a='cm:"+x.i+"'>View all "+x.cm+" comments</div></div></div>";
+const xp=x=>"<div class='card' data-a='v:"+x.i+"'><div class='po'>"+av(x)+"<div><b>"+x.ch+"</b> <span class='mu'>· "+x.t+"</span></div></div><div class='rt' style='font-size:18px'>"+x.ar+"</div><div class='mu'>"+x.en+"</div>"+(x.i%3==0?med(x):"")+"<div class='mu' style='margin-top:8px'>💬 "+x.cm+" &nbsp; 🔁 112 &nbsp; ♥ "+x.lk+"</div></div>";
+const detail=(x,ty,l)=>{const yt=ty=="yt",m=ty=="news"?pic(x):ty=="x"&&x.i%3?"":med(x,ty=="ig"?"sq":"").replace("data-a='tog'","data-a='tog' data-cap=1");return m+(m&&ty!="news"&&!x.yid?"<div id='capb' class='card'></div>":"")+"<div class='pt rt'>"+x.ar+"</div><div class='pm'>"+(x.en?x.en+" · ":"")+(x.v?x.v+" views · ":"")+x.t+"</div>"+(ty=="news"?"<p class='rt' style='font-size:20px;line-height:2'>هذا نص تجريبي قصير للقراءة. سيأتي النص الكامل من الخادم.</p>":"")+"<div class='po' style='margin:10px 0'>"+av(x)+"<div style='flex:1'><b>"+x.ch+"</b><div class='mu'>"+(x.yid?"YouTube channel":x.subs+(yt?" subscribers":" followers"))+"</div></div><button data-t=1 data-alt='"+(yt?"Subscribed ✓":"Following ✓")+"'>"+(yt?"Subscribe":"Follow")+"</button></div><div class='shelf'><button data-t=1>👍 "+x.lk+"</button><button data-t=1>Share</button><button data-t=1>Save</button><button class='pri' data-a='learn'>🎓 Learn with this</button></div>"+cmts(x)+(ty=="x"||ty=="news"?"":"<div class='sh'>Up next</div><div class='vr'>"+l.filter(y=>y.id!=x.id).slice(0,8).map(card).join("")+"</div>")};
+const ACC={yt:"#ff3b3b",tt:"#fe2c55",fb:"#2f7bff",ig:"#e1306c",x:"#1d9bf0",aj:"#c8a24a",bbc:"#d23b3b",f24:"#2f6bd6"};
+const art=x=>x.th?"":"<span class='art'>"+x.ar.split(" ")[0]+"</span>";
+let CT=0,CI=-1;
+function capShow(i){CI=i;const c=cues[i],B=$("capb");if(!B||!c)return;B.innerHTML="<div class='rt' style='font-size:24px;line-height:2'>"+c.toks.map((k,j)=>"<span class='w' data-a='w:"+i+"-"+j+"'>"+k.w+"</span>").join(" ")+"</div><div class='mu'>"+c.tr+"</div><div class='mu' style='font-size:12px'>Tap a word to see its meaning and save it</div>"}
+setInterval(()=>{const p=document.querySelector(".sim[data-cap]");if(!p||p.classList.contains("ps"))return;CT+=.5;const i=Math.floor(CT/4)%cues.length;if(i!=CI)capShow(i)},500);
+function wsheet(k,c){document.querySelectorAll(".sheet").forEach(e=>e.remove());const sent=c.toks.map(x=>x.w).join(" "),have=vocab.find(v=>v.lemma==k.l),d=document.createElement("div");d.className="sheet";
+ d.innerHTML="<div class='po'><div class='ar' style='flex:1'>"+k.w+"</div><button data-a='x'>✕</button></div>"+(k.unk?"<div class='mu'>Not in the demo lexicon.</div>":"<b>"+k.g+"</b><div class='mu'>"+k.l+" · "+k.pos+(k.root!="-"?" · root "+k.root:"")+"</div>")+"<div class='shelf' style='margin:12px 0 0'><button class='b1'>🔊 Word</button><button class='b2'>🔊 Sentence</button>"+(k.unk?"":"<button class='pri b3'>"+(have?"Saved ✓":"+ Add to vocabulary")+"</button>")+"</div>";
+ d.querySelector(".b1").onclick=()=>say(k.w);d.querySelector(".b2").onclick=()=>say(sent);
+ const ad=d.querySelector(".b3");if(ad)ad.onclick=()=>{const ex=vocab.find(v=>v.lemma==k.l);if(ex)ex.n++;else vocab.push({word:k.w,lemma:k.l,tr:k.g,sent,sentTr:c.tr,src:"Socials",date:today(),n:1,ease:2.5,ivl:0,due:today(),reps:0,hist:[]});sv("lp_v",vocab);ad.textContent="Saved ✓";render()};
+ $("soc").append(d)}
+function chrome(){$("ab").style.display=P?"flex":"none";const se=$("search");P?se.style.setProperty("--ac",ACC[P]):se.style.removeProperty("--ac");$("an").innerHTML=P?"<i class='lg'>"+PL[pi()][2]+"</i>"+PL[pi()][1]:""}
+async function soc(){const S=$("soc");
+ if(!P){S.innerHTML="<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in Arabic</div></div></div><div class='sg'>"+PL.map(p=>"<div class='sc' data-a='p:"+p[0]+"' style='background:linear-gradient(150deg,"+p[3]+")'><i>"+p[2]+"</i><div>"+p[1]+"<small>"+(p[4]=="news"?"News":"Social")+"</small></div></div>").join("")+"</div><p class='mu'>YouTube loads real videos once an API key is set. Other platforms show sample content.</p>";return}
+ const ty=PL[pi()][4],it=await API.feed(P,tab,Q);
+ if(!it.length){S.innerHTML=emptyMsg();return}
+ const x=V!==null?it.find(y=>y.i==V):null;let h;
+ if(x)h=detail(x,ty,it);
+ else if(ty=="yt")h=tabs([["home","Home"],["shorts","Shorts"],["subs","Subscriptions"]])+(tab=="shorts"?feed(it):chips+(tab=="home"?"<div class='sh'>Shorts</div><div class='shelf'>"+it.slice(0,6).map(s=>"<div class='s9' data-a='t:shorts' style='"+tb(s)+"'>"+s.en+"</div>").join("")+"</div>":"")+"<div class='vr'>"+it.map(card).join("")+"</div>");
+ else if(ty=="vert")h=tabs([["fol","Following"],["fy","For You"]])+feed(it);
+ else if(ty=="fb")h=tabs([["home","Home"],["watch","Watch"],["reels","Reels"]])+(tab=="reels"?feed(it):tab=="watch"?"<div class='vr'>"+it.map(card).join("")+"</div>":stories+"<div class='card po'>"+av(it[0])+"<div class='mu'>What's on your mind?</div></div>"+it.map(fbp).join(""));
+ else if(ty=="ig")h=tabs([["home","Home"],["reels","Reels"],["explore","Explore"]])+(tab=="reels"?feed(it):tab=="explore"?"<div class='ig3'>"+it.map(y=>"<div class='th sq vi' data-a='v:"+y.i+"' style='"+tb(y)+"'></div>").join("")+"</div>":stories+it.map(igp).join(""));
+ else if(ty=="x")h=tabs([["home","For you"],["fol","Following"]])+"<div class='card po'>"+av(it[0])+"<div class='mu'>What's happening?</div></div>"+it.map(xp).join("");
+ else h=tabs([["home","Top"],["world","World"],["sport","Sport"],["cult","Culture"]])+"<div class='vi' data-a='v:"+it[0].i+"'>"+pic(it[0])+"<h2 class='rt' style='font-size:22px'>"+it[0].ar+"</h2><div class='pm'>"+it[0].en+"</div></div><div class='sh'>Latest</div>"+it.slice(1).map(nr).join("");
+ S.innerHTML=h;if(x){CT=0;CI=-1;capShow(0)}}
+$("soc").onclick=e=>{const t=e.target.closest("[data-t]");if(t){t.classList.toggle("on");if(t.dataset.alt){const s=t.textContent;t.textContent=t.dataset.alt;t.dataset.alt=s}return}
+ const a=e.target.closest("[data-a]");if(!a)return;const[k,v]=a.dataset.a.split(":");
+ if(k=="w"){const[i,j]=v.split("-"),c=cues[+i];document.querySelector(".sim")?.classList.add("ps");wsheet(c.toks[+j],c);return}if(k=="tog"){a.classList.toggle("ps");return}if(k=="learn")return nav("watch");if(k=="ykey"){const kv=$("kin").value.trim();if(!kv)return;sv(YK,kv)}
+ if(k=="x"){document.querySelectorAll(".sheet").forEach(s=>s.remove());return}
+ if(k=="cm"){const s=document.createElement("div");s.className="sheet";s.innerHTML="<div class='po'><b style='flex:1'>Comments</b><button data-a='x'>✕</button></div>"+CM.map(cmt).join("");$("soc").append(s);return}
+ if(k=="p"){P=v;tab=v=="tt"?"fy":"home";V=null;Q=""}if(k=="t"){tab=v;V=null}if(k=="v")V=+v;if(k=="c"){Q=v;$("sq").value=v}
+ chrome();soc();scrollTo(0,0)};
+$("bk").onclick=()=>{if(V!==null)V=null;else{P=null;Q="";$("sq").value=""}chrome();soc();scrollTo(0,0)};
+let dbn;$("sq").oninput=()=>{clearTimeout(dbn);dbn=setTimeout(()=>{Q=$("sq").value;V=null;soc()},300)};
+// ---- flashcards sub-tabs
+function pane(p){$("pane-hub").style.display=p=="hub"?"":"none";$("subbar").style.display=p=="hub"?"none":"";$("fc").style.display=p=="rev"?"":"none";$("pane-words").style.display=p=="words"?"":"none";$("pane-ai").style.display=p=="ai"?"":"none";if(p=="rev"){q=[];shown=false;cards()}}
+document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>pane(b.dataset.p));document.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{pane("ai");$(b.dataset.a).click()});
+// ---- AI (viewer's Claude via the sample capability)
+let AI;async function getAI(){if(AI!==undefined&&(AI||!SV.ai))return AI;
+ if(SV.ai){const S=async p=>{const r=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p})}),j=await r.json();if(j.error){const e=new Error(j.error);e.code=j.error;throw e}return{text:j.text}};
+  S.json=async p=>JSON.parse((await S(p+"\nReturn ONLY the JSON, no markdown.")).text.replace(/```json|```/g,"").trim());return AI=S}
+ try{AI=await claude.use("sample")}catch(e){AI=null}return AI}
+function say_(who,t){const d=document.createElement("div");d.style.cssText="margin:6px 0;white-space:pre-wrap";d.innerHTML="<b>"+who+":</b> ";d.append(document.createTextNode(t));$("ailog").append(d);$("ailog").scrollTop=1e9;return d}
+async function ask(q){if(!q)return;say_("You",q);$("aiq").value="";const S=await getAI();if(!S)return say_("Tutor","AI is not available in this view.");
+ const d=say_("Tutor","…");const ctx="You are a friendly Arabic tutor for an English-speaking beginner (A1). Answer simply in English with short Arabic examples. Under 120 words. Learner's saved words: "+(vocab.map(v=>v.lemma+"="+v.tr).join(", ")||"none yet")+".\n\nRequest: "+q;
+ try{const r=await S(ctx,{cache:false});d.lastChild.textContent=r.text}catch(e){d.lastChild.textContent="AI error ("+(e.code||"unknown")+")."}}
+$("aisend").onclick=()=>ask($("aiq").value.trim());$("aiq").onkeydown=e=>{if(e.key=="Enter")$("aisend").click()};
+$("qz").onclick=()=>ask("Quiz me with 3 questions using my saved words. Ask one at a time style: list the 3 questions, answers hidden until I reply.");
+$("mk").onclick=()=>ask("Write 3 simple Arabic sentences using my saved words, each with an English translation.");
+
+function toast(t){const d=$("toast");d.textContent=t;d.style.opacity=1;clearTimeout(toast.h);toast.h=setTimeout(()=>d.style.opacity=0,2400)}
+function fun(streak,mast,r,g){
+ const n=vocab.length,rv=vocab.reduce((a,v)=>a+v.hist.length,0),mins=Math.round(Object.values(log).reduce((a,d)=>a+d.sec,0)/60);
+ const xp=n*10+rv*2+mins,lv=Math.floor(xp/100)+1,pr=xp%100,vis=$("profile").classList.contains("show");
+ const st=n==0?"Seed":n<5?"Sprout":n<15?"Sapling":n<40?"Young tree":"Grand tree";
+ $("xp").innerHTML="<div style='display:flex;justify-content:space-between'><b>Level "+lv+" · "+st+"</b><span class='mu'>"+xp+" XP</span></div><div class='xpb'><div style='width:"+pr+"%'></div></div><div class='mu' style='margin-top:6px'>+10 per new word · +2 per review · +1 per minute watched</div>";
+ const seen=ld("lp_seen",0),pl=ld("lp_lvl",0);
+ const m=Math.min(n,60),H=Math.min(120,30+n*3),cx=160,rx=30+m*1.5,ry=rx*.8,cy=Math.max(ry+12,280-H-ry*.5);
+ let o='<svg viewBox="0 0 320 300" style="width:100%;max-width:420px;display:block;margin:6px auto"><ellipse cx="160" cy="284" rx="120" ry="10" fill="rgba(120,90,50,.35)"/>';
+ if(!n)o+='<ellipse cx="160" cy="276" rx="9" ry="6" fill="#8a5a2b"/><path d="M160 270c0-8 2-12 8-14" stroke="#58b85a" stroke-width="3" fill="none" stroke-linecap="round"/>';
+ else{o+='<g class="can"><polygon points="152,282 168,282 164,'+(282-H)+' 156,'+(282-H)+'" fill="#7a5230"/>';
+  if(n>=5)o+='<path d="M160 '+(282-H*.6)+' L'+(cx-rx*.5)+' '+(cy+ry*.4)+' M160 '+(282-H*.7)+' L'+(cx+rx*.5)+' '+(cy+ry*.4)+'" stroke="#7a5230" stroke-width="5" stroke-linecap="round" fill="none"/>';
+  o+='<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="rgba(88,184,90,.14)"/>';
+  for(let i=0;i<m;i++){const v=vocab[i],a=i*2.399,d=Math.sqrt((i+.5)/m)*.9,x=cx+rx*d*Math.cos(a),y=cy+ry*d*Math.sin(a);
+   const col=v.ivl>=21?"#f5c542":v.reps>0?"#3fa34d":"#9be37e",ring=v.due<=today()&&n?' stroke="#ff6b6b" stroke-width="2" stroke-dasharray="3 2"':"";
+   o+='<circle class="lf'+(i>=seen?" pop":"")+'" data-i="'+i+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="9" fill="'+col+'"'+ring+' style="animation-delay:'+((i-seen)*0.12)+'s"/>'}
+  o+='</g>'}
+ o+='</svg><div class="mu" style="text-align:center">🟢 new · 🌿 learning · 🟡 mastered · red ring = due today'+(n>60?' · showing 60 of '+n:'')+'</div>';
+ $("tree").innerHTML=o;
+ $("tree").onclick=e=>{const i=e.target.dataset&&e.target.dataset.i;if(i==null)return;const v=vocab[i];$("leafcap").textContent=v.lemma+" — "+v.tr+" · seen "+v.n+"×"};
+ $("leafcap").textContent=n?"Tap a leaf to see the word":"Save a word while watching to plant your seed 🌱";
+ const B=[["🌱","First word",n>=1],["🌿","10 words",n>=10],["🌳","25 words",n>=25],["🔁","First review",rv>=1],["🔥","3-day streak",streak>=3],["🎯","Daily goal",r>=g],["🏆","First mastered",mast>=1],["🎬","10 min watched",mins>=10]];
+ $("badges").innerHTML=B.map(b=>"<div class='bd"+(b[2]?"":" lock")+"'><i>"+b[0]+"</i>"+b[1]+"</div>").join("");
+ if(vis){sv("lp_seen",n)}
+ if(lv>pl){if(pl)toast("🎉 Level "+lv+"!");sv("lp_lvl",lv)}}
+lib();chrome();soc();
+fetch("/api/status").then(r=>r.json()).then(j=>{SV=j;return fetch("/api/library").then(r=>r.json())}).then(j=>{if(j&&j.movies){LIBD=j;lib()}}).catch(()=>{});
+render();
+</script></body></html>

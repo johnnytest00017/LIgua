@@ -1,0 +1,8 @@
+{
+  "appId": "com.lingua.arabic",
+  "appName": "Lingua",
+  "webDir": "www",
+  "server": { "androidScheme": "http", "cleartext": true },
+  "android": { "allowMixedContent": true },
+  "ios": { "contentInset": "never", "backgroundColor": "#0b0b0c" }
+}
