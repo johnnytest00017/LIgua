@@ -18,6 +18,8 @@ jobs:
       - run: test -d android || npx cap add android
       - run: npm run assets -- --android || true
       - run: npx cap sync android
+      - name: Add Back-button + Media-folder support to the Android project
+        run: bash scripts/patch-android.sh
       - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:

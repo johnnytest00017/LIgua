@@ -6,17 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="icon-192.png">
-<script>
-// Mobile shim: send /api/* and server-hosted media to your Lingua server (server.py) if one is set
-(function(){var f=window.fetch.bind(window);
- window.lpBase=function(){try{return (localStorage.getItem('lp_server')||'').replace(/\/+$/,'')}catch(e){return ''}};
- window.lpAbs=function(u){return(typeof u==='string'&&u[0]==='/'&&u[1]!=='/')?lpBase()+u:u};
- window.fetch=function(u,o){return f(lpAbs(u),o)};
- window.lpSetServer=function(){var v=prompt('Lingua server address (e.g. http://192.168.1.20:8000). Leave empty to clear.',lpBase());
-  if(v===null)return;try{localStorage.setItem('lp_server',v.trim())}catch(e){}location.reload()};
- if('serviceWorker' in navigator&&location.protocol.indexOf('http')==0)navigator.serviceWorker.register('sw.js').catch(function(){});
-})();
-</script>
+<script src="lingua-native.js"></script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
@@ -222,7 +212,7 @@ video.th{display:block;width:100%;max-height:none;background:#000}
 #watch .saveW{margin-top:14px}
 
 </style></head><body>
-<header style="display:flex;justify-content:space-between;align-items:center"><span>Lingua · العربية</span><button onclick="lpSetServer()" aria-label="Server settings" style="padding:4px 10px">⚙︎</button></header>
+<header>Lingua · العربية</header>
 <main>
 <section id="library" class="v show"><div id="rows"></div><p class="mu">Only legal sources: public-domain, licensed/authorized providers, or your own files.</p></section>
 <section id="search" class="v"><div id="ab"><button id="bk" aria-label="Back">←</button><b id="an"></b><input id="sq" placeholder="Search…"></div><div id="soc"></div></section>
@@ -726,7 +716,7 @@ async function openItem(it){
    if(!E.length)E=L.filter(c=>c.tr).map(c=>({s:c.s,e:c.e,t:c.tr}))}
   AR=A;EN=E;cur=-1;pausedFor=-1;enOff=0;$("eno").textContent="0s";
   closePanel();show(-1);
-  v.src=lpAbs(it.video);C.classList.add("loaded");
+  v.src=it.video;C.classList.add("loaded");
   curTitle=it.title+(it.sub?" · "+it.sub:"");
   pstatus();nav("watch");
   if(!A.length)toast("No Arabic subtitle file found. Put NAME.ar.srt next to the video.")}
@@ -882,12 +872,12 @@ let dbn;$("sq").oninput=()=>{clearTimeout(dbn);dbn=setTimeout(()=>{Q=$("sq").val
 function pane(p){$("pane-hub").style.display=p=="hub"?"":"none";$("subbar").style.display=p=="hub"?"none":"";$("fc").style.display=p=="rev"?"":"none";$("pane-words").style.display=p=="words"?"":"none";$("pane-ai").style.display=p=="ai"?"":"none";if(p=="rev"){q=[];shown=false;cards()}}
 document.querySelectorAll("[data-p]").forEach(b=>b.onclick=()=>pane(b.dataset.p));document.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{pane("ai");$(b.dataset.a).click()});
 // ---- AI (viewer's Claude via the sample capability)
-let AI;async function getAI(){if(AI!==undefined&&(AI||!SV.ai))return AI;
+let AI;async function getAI(){if(AI)return AI;SV.ai=window.lpAiReady&&lpAiReady()?1:0;
  if(SV.ai){const S=async p=>{const r=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:p})}),j=await r.json();if(j.error){const e=new Error(j.error);e.code=j.error;throw e}return{text:j.text}};
   S.json=async p=>JSON.parse((await S(p+"\nReturn ONLY the JSON, no markdown.")).text.replace(/```json|```/g,"").trim());return AI=S}
  try{AI=await claude.use("sample")}catch(e){AI=null}return AI}
 function say_(who,t){const d=document.createElement("div");d.style.cssText="margin:6px 0;white-space:pre-wrap";d.innerHTML="<b>"+who+":</b> ";d.append(document.createTextNode(t));$("ailog").append(d);$("ailog").scrollTop=1e9;return d}
-async function ask(q){if(!q)return;say_("You",q);$("aiq").value="";const S=await getAI();if(!S)return say_("Tutor","AI is not available in this view.");
+async function ask(q){if(!q)return;say_("You",q);$("aiq").value="";const S=await getAI();if(!S)return say_("Tutor","AI is off. Tap a word while watching, open AI settings, and save an API key.");
  const d=say_("Tutor","…");const ctx="You are a friendly Arabic tutor for an English-speaking beginner (A1). Answer simply in English with short Arabic examples. Under 120 words. Learner's saved words: "+(vocab.map(v=>v.lemma+"="+v.tr).join(", ")||"none yet")+".\n\nRequest: "+q;
  try{const r=await S(ctx,{cache:false});d.lastChild.textContent=r.text}catch(e){d.lastChild.textContent="AI error ("+(e.code||"unknown")+")."}}
 $("aisend").onclick=()=>ask($("aiq").value.trim());$("aiq").onkeydown=e=>{if(e.key=="Enter")$("aisend").click()};

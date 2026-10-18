@@ -7,13 +7,15 @@
     "add:ios": "cap add ios",
     "assets": "capacitor-assets generate --iconBackgroundColor #0b0b0c --splashBackgroundColor #0b0b0c",
     "sync": "cap sync",
-    "android": "cap sync android && cap open android",
-    "ios": "cap sync ios && cap open ios"
+    "android": "cap sync android && bash scripts/patch-android.sh && cap open android",
+    "ios": "cap sync ios && cap open ios",
+    "patch": "bash scripts/patch-android.sh"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
     "@capacitor/core": "^7.0.0",
-    "@capacitor/ios": "^7.0.0"
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/app": "^7.0.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
