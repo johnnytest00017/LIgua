@@ -15,7 +15,7 @@ jobs:
       - name: Accept Android SDK licenses (SDK is preinstalled on runner)
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
       - run: npm install
-      - run: npx cap add android
+      - run: test -d android || npx cap add android
       - run: npm run assets -- --android || true
       - run: npx cap sync android
       - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
