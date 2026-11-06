@@ -1,6 +1,12 @@
 node_modules/
-.env
-.env.*
-!.env.example
+www/models/
+www/ort/
+www/lingua-onnx.js
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/
+*.apk
 .DS_Store
-*.log
+android/
