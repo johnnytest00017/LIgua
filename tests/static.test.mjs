@@ -64,3 +64,9 @@ test('globals that safina-library.js depends on exist in the page', { skip: !exi
   for (const g of ['parseSrt', 'decodeBuf', 'toast', 'nav', 'playLoded', 'LIBD', 'lib'].map(x => x === 'playLoded' ? 'playLoaded' : x))
     assert.match(html, new RegExp('(function\\s+' + g + '\\b|(const|let|var)\\s+' + g + '\\b)'), g + ' is missing');
 });
+
+import { existsSync as __ex, readFileSync as __rf } from 'node:fs';
+test('the build signs with the committed key, so updates install over the old app', () => {
+  assert.ok(__ex(new URL('../signing/debug.keystore', import.meta.url)));
+  assert.match(__rf(new URL('../.github/workflows/android.yml', import.meta.url), 'utf8'), /signing\/debug\.keystore/);
+});
