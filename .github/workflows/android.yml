@@ -17,7 +17,8 @@ jobs:
       # Same signing key on every build, so a new APK installs over the old one and the downloaded models are kept.
       - name: Use the fixed debug signing key
         run: mkdir -p ~/.android && cp signing/debug.keystore ~/.android/debug.keystore
-      - run: npm install
+      - name: Install packages (retries if a download hiccups)
+        run: for i in 1 2 3; do npm install && exit 0; echo retry $i; sleep 20; done; exit 1
       - run: test -d android || npx cap add android
       - run: npm run assets -- --android || true
       # No models are bundled any more: the app downloads its translator and AI after install.
