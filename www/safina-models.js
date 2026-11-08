@@ -31,7 +31,12 @@
   const W = typeof window !== 'undefined' ? window : {};
   const E = {
     Filesystem: env.Filesystem || (() => W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem),
-    Llm: env.Llm || (() => W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.LinguaLlm),
+    Llm: env.Llm || (() => {   /* the native LinguaLlm plugin, however this Capacitor build exposes it */
+      const C = W.Capacitor; if (!C) return undefined;
+      if (C.Plugins && C.Plugins.LinguaLlm) return C.Plugins.LinguaLlm;
+      if (C.isPluginAvailable && C.registerPlugin && C.isPluginAvailable('LinguaLlm')) return (W.__linguaLlm = W.__linguaLlm || C.registerPlugin('LinguaLlm'));
+      return undefined;
+    }),
     store: env.store || { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* full */ } } },
     fetchJson: env.fetchJson || (async u => { const r = await fetch(u, { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
     convertFileSrc: env.convertFileSrc || (u => (W.Capacitor && W.Capacitor.convertFileSrc ? W.Capacitor.convertFileSrc(u) : u)),
@@ -43,7 +48,7 @@
 
   const scriptOf = env.scriptOf || (l => { const L = W.SafinaAI && W.SafinaAI.LANGS && W.SafinaAI.LANGS[l]; return L && L.script ? L.script.source : ''; });
 
-  const DEFAULT_CONFIG = { manifestUrl: '', translatorBase: '', customLlm: null, llm: null, setupDone: false, allowBuiltin: false };
+  const DEFAULT_CONFIG = { manifestUrl: '', translatorBase: '', customLlm: null, llm: null, setupDone: false, allowBuiltin: true };
   const TRANSLATOR_FILES = ['config.json', 'tokenizer.json', 'tokenizer_config.json', 'encoder_model.onnx', 'decoder_model.onnx', 'decoder_with_past_model.onnx'];
   /* BUILT-IN SOURCES: used when you have not set a manifest or folder pattern, so the app downloads what it needs by itself.
    * Translator: the public Xenova/opus-mt-<pair> ONNX exports on Hugging Face (int8-quantized files, about 4x smaller than fp32),
@@ -52,6 +57,8 @@
    * point the app at your own copy in AI settings > Downloads (manifest or folder pattern) and it takes priority. */
   const BUILTIN = {
     translatorUrl: (pair, remote) => 'https://huggingface.co/Xenova/opus-mt-' + pair + '/resolve/main/' + remote,
+    /* multi-target models need a language tag in front of the text; en-ar is the one this app uses */
+    prefixes: { 'en-ar': '>>ara<<' },
     remoteName: name => /\.onnx$/.test(name) ? 'onnx/' + name.replace(/\.onnx$/, '_quantized.onnx') : name,
     llms: [{ id: 'qwen2.5-0.5b', name: 'Qwen 2.5 0.5B', family: 'chatml', size: 550000000,
       file: { name: 'qwen2.5-0.5b.task', url: 'https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task' } }]
@@ -85,7 +92,7 @@
     (langCodes || []).filter(c => c !== 'en').forEach(c => {
       [[c, 'en'], ['en', c]].forEach(([src, tgt]) => {
         const pair = src + '-' + tgt;
-        out.push({ id: pair, src, tgt, prefix: '', size: 0, builtin: true, files: TRANSLATOR_FILES.map(name => ({ name, url: BUILTIN.translatorUrl(pair, BUILTIN.remoteName(name)) })) });
+        out.push({ id: pair, src, tgt, prefix: BUILTIN.prefixes[pair] || '', size: 0, builtin: true, files: TRANSLATOR_FILES.map(name => ({ name, url: BUILTIN.translatorUrl(pair, BUILTIN.remoteName(name)) })) });
       });
     });
     return out;
@@ -111,7 +118,7 @@
     }
     if (!m.translators.length && c.translatorBase) { m.translators = translatorsFromTemplate(c.translatorBase, langCodes); source = source === 'manifest' ? source : 'template'; }
     /* your own sources win; the built-in ones fill every pair and model you did not provide */
-    if (c.allowBuiltin) {   /* off by default: only your own source is used unless you switch this on */
+    if (c.allowBuiltin !== false) {   /* on by default; your own manifest or folder pattern always wins; set allowBuiltin:false to use only your own */
       builtinTranslators(langCodes).forEach(t => { if (!m.translators.some(x => x.id === t.id)) m.translators.push(t); });
       BUILTIN.llms.forEach(l => { if (!m.llms.some(x => x.id === l.id)) m.llms.push(l); });
       if (source === 'none') source = 'built-in';
@@ -240,7 +247,7 @@
     if (llmLoaded && llmLoaded.id === rec.id) return rec;
     E.emit('status', 'Loading ' + rec.name + '…');
     const { uri } = await FS().getUri({ path: rel('llm', rec.id, rec.file), directory: 'DATA' });
-    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 1024 });
+    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 2048 });
     llmLoaded = { id: rec.id };
     E.emit('status', '');
     return rec;
@@ -265,7 +272,7 @@
     if (!E.native()) { out.skipped.push('not in the installed app'); return out; }
     const learn = o.learn, native = o.native;
     if (!learn || !native || learn === native) return out;
-    if (!cfg().manifestUrl && !cfg().translatorBase && !cfg().allowBuiltin) { out.skipped.push('no download source set'); out.needSource = true; return out; }
+    if (!cfg().manifestUrl && !cfg().translatorBase && cfg().allowBuiltin === false) { out.skipped.push('no download source set'); out.needSource = true; return out; }
     const man = await loadManifest([learn, native]);
     const jobs = [];
     const tr = man.translators.find(t => t.id === learn + '-' + native);

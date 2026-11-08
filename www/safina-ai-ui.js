@@ -157,8 +157,18 @@
     const provs = Object.keys(SA.PROVIDERS);
     h += '<div class="sai-card"><b>Add an account</b><select data-f="n-provider">' + provs.map(p => '<option value="' + p + '">' + esc(SA.PROVIDERS[p].name) + (SA.isMT(p) ? ' (translation only)' : '') + '</option>').join('') + '</select><input data-f="n-label" placeholder="Name (Personal, Work…)"><input data-f="n-key" type="password" placeholder="API key" autocomplete="off"><input data-f="n-base" placeholder="Base address (Custom only)"><button class="sai-btn pri" data-act="acc-add" style="margin-top:8px">Add</button></div>';
 
-    h += '<h3>When a limit is reached</h3><div class="sai-card"><label class="sai-sw"><input type="radio" name="sai-lim" data-act="autoswitch" value="0"' + (!st.autoSwitch ? ' checked' : '') + '><span><b>Ask me</b><br><span class="sai-mu">Choose: same model on another account, another model on the same account, another AI, or the on-phone AI.</span></span></label>' +
+    if (window.BRAIN) {
+      const bs = window.BRAIN.state();
+      h += '<h3>Learner brain</h3><div class="sai-card"><label class="sai-sw"><input type="checkbox" data-act="brain-on"' + (bs.on ? ' checked' : '') + '><span><b>Learn from what I watch</b><br><span class="sai-mu">The AI notices which words you tap and replay, judges whether you understood each sentence, and makes flashcards at your level. It uses your AI accounts, or the on-phone AI when none is available.</span></span></label>' +
+        '<label class="sai-mu" style="display:block;margin-top:8px">Look at what I watched after every</label><select data-act="brain-every">' + [8, 12, 20, 30].map(n => '<option value="' + n + '"' + (bs.every === n ? ' selected' : '') + '>' + n + ' sentences</option>').join('') + '</select>' +
+        '<div class="sai-note">Each look sends a handful of sentences to the AI, so a smaller number uses more of your limit.</div></div>';
+    }
+    h += '<h3>When a limit is reached</h3><div class="sai-card"><label class="sai-sw"><input type="checkbox" data-act="locallimit"' + (st.localOnLimit !== false ? ' checked' : '') + '><span><b>Switch to the on-phone AI</b><br><span class="sai-mu">When the powerful AI runs out, carry on with the on-phone AI (if downloaded) and go back when the limit resets.</span></span></label></div><div class="sai-card"><label class="sai-sw"><input type="radio" name="sai-lim" data-act="autoswitch" value="0"' + (!st.autoSwitch ? ' checked' : '') + '><span><b>Ask me</b><br><span class="sai-mu">Choose: same model on another account, another model on the same account, another AI, or the on-phone AI.</span></span></label>' +
       '<label class="sai-sw"><input type="radio" name="sai-lim" data-act="autoswitch" value="1"' + (st.autoSwitch ? ' checked' : '') + '><span><b>Switch automatically</b><br><span class="sai-mu">In that order, without asking.</span></span></label></div>';
+    const lg = SAI.log, kb = Math.round(lg.size() / 1024);
+    h += '<h3>AI log</h3><div class="sai-card"><label class="sai-sw"><input type="checkbox" data-act="opt" data-f="logAI"' + (st.logAI !== false ? ' checked' : '') + '><span><b>Keep every prompt and every reply</b><br><span class="sai-mu">The whole text sent to the AI and the whole answer, for flashcards, assessments, drills, translations and chat. Stored only on this phone.</span></span></label>' +
+      '<div class="sai-mu" style="margin:8px 0">' + lg.count() + ' saved · ' + (kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB') + '</div>' +
+      '<div class="sai-row"><button class="sai-btn" data-act="log-view">View</button><button class="sai-btn" data-act="log-copy">Copy all</button><button class="sai-btn" data-act="log-file">Save as file</button><button class="sai-btn" data-act="log-clear">Clear</button></div><div class="sai-mu" id="sai-logmsg"></div></div>';
     h += '<h3>Saved translations</h3><div class="sai-card"><div class="sai-row"><div class="grow sai-mu">Lines and words already translated are kept, so they cost nothing the second time.</div><button class="sai-btn" data-act="clear-cache">Clear</button></div></div>';
     return h;
   }
@@ -223,8 +233,35 @@
       SAI.setOption('lang', l); applyLang(); render();
     } else if (act === 'opt') { SAI.setOption(t.dataset.f, t.type === 'checkbox' ? t.checked : t.value); render(); }
     else if (act === 'showdia') { window.SAFINA_SHOWDIA(t.checked); }
+    else if (act === 'brain-on') { window.BRAIN.setOption('on', t.checked); }
+    else if (act === 'brain-every') { window.BRAIN.setOption('every', t.value); }
+    else if (act === 'locallimit') { SAI.setOption('localOnLimit', t.checked); }
     else if (act === 'autoswitch') { SAI.setOption('autoSwitch', t.value === '1'); }
   });
+
+
+  /* ---- AI log: viewer and file export ---- */
+  const $id = i => document.getElementById(i);
+  async function logFile() {
+    const m = $id('sai-logmsg'), name = 'safina-ai-log-' + new Date().toISOString().slice(0, 10) + '.json', data = SAI.log.exportJSON();
+    try {
+      const FS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+      if (FS) { const r = await FS.writeFile({ path: name, data, directory: 'DOCUMENTS', encoding: 'utf8' }); m.textContent = 'Saved to Documents/' + name; return r; }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); m.textContent = 'Saved ' + name;
+    } catch (e) { m.textContent = 'Could not save the file (' + (e && e.message || e) + '). Use Copy all.'; }
+  }
+  function logView() {
+    let box = $id('sai-logview');
+    if (!box) { box = document.createElement('div'); box.id = 'sai-logview'; box.style.cssText = 'position:fixed;inset:0;z-index:100000;background:var(--bg,#0b0b0c);color:var(--tx,#fff);overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 30px;font:13px system-ui,sans-serif'; document.body.appendChild(box); }
+    const e2 = x => String(x).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const L = SAI.log.list().slice().reverse();
+    box.innerHTML = '<div style="display:flex;align-items:center;margin-bottom:10px"><b style="flex:1;font-size:17px">AI log (' + L.length + ')</b><button id="sai-logx" style="border:0;background:none;color:inherit;font-size:22px">✕</button></div>' +
+      (L.length ? L.map(e => '<details style="border:1px solid var(--ln,#2a2a2e);border-radius:12px;padding:8px 10px;margin:6px 0"><summary>' + (e.ok ? '✅' : '⚠️') + ' ' + e2(e.purpose) + ' · ' + e2(e.via) + ' · ' + new Date(e.at).toLocaleString() + ' · ' + e.ms + ' ms</summary>' +
+        (e.system ? '<div style="opacity:.6;margin-top:8px">System</div><pre style="white-space:pre-wrap;word-break:break-word;margin:2px 0">' + e2(e.system) + '</pre>' : '') +
+        '<div style="opacity:.6;margin-top:8px">Prompt</div><pre style="white-space:pre-wrap;word-break:break-word;margin:2px 0">' + e2(e.prompt) + '</pre>' +
+        '<div style="opacity:.6;margin-top:8px">' + (e.ok ? 'Reply' : 'Error') + '</div><pre style="white-space:pre-wrap;word-break:break-word;margin:2px 0">' + e2(e.ok ? e.reply : e.error) + '</pre></details>').join('') : '<div style="opacity:.6">Nothing yet. Every AI call from now on is kept here.</div>');
+    $id('sai-logx').onclick = () => box.remove();
+  }
 
   panel.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
@@ -255,6 +292,10 @@
     else if (act === 'acc-up' || act === 'acc-down') { SAI.moveAccount(id, act === 'acc-up' ? -1 : 1); render(); }
     else if (act === 'acc-models') { msgs[id] = 'Loading the model list…'; render(); try { const m = await SAI.refreshModels(id); msgs[id] = m.length + ' models found'; } catch (err) { msgs[id] = 'Could not load models: ' + err.message; } render(); }
     else if (act === 'acc-test') { msgs[id] = 'Testing…'; render(); try { msgs[id] = '✓ Works. Reply: ' + await SAI.testAccount(id); } catch (err) { msgs[id] = '✗ ' + err.message; } render(); }
+    else if (act === 'log-view') { logView(); }
+    else if (act === 'log-copy') { const m = $id('sai-logmsg'); try { await navigator.clipboard.writeText(SAI.log.exportText()); m.textContent = 'Copied ' + SAI.log.count() + ' entries.'; } catch (_) { m.textContent = 'Could not copy. Use Save as file.'; } }
+    else if (act === 'log-file') { await logFile(); }
+    else if (act === 'log-clear') { if (confirm('Delete the whole AI log from this phone?')) { SAI.log.clear(); render(); } }
     else if (act === 'clear-cache') { SAI.clearCache(); say('Saved translations cleared'); }
   });
   sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });

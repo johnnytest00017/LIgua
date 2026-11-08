@@ -24,7 +24,7 @@ def between(start, end, new):
 
 # 1. scripts: engine before the page's own code, UI after it
 rep('<script src="lingua-native.js"></script>',
-    '<script src="lingua-native.js"></script>\n<script src="safina-ai.js"></script>\n<script src="safina-models.js"></script>\n<script src="safina-boot.js"></script>')
+    '<script src="safina-ai.js"></script>\n<script src="safina-models.js"></script>\n<script src="safina-boot.js"></script>')   # lingua-native.js is gone from the project and nothing else used it
 rep('</script>\n<script src="safina-library.js"></script>',
     '</script>\n<script src="safina-ai-ui.js"></script>\n<script src="safina-library.js"></script>')
 
@@ -289,6 +289,43 @@ $("soc").onclick=e=>{const a=e.target.closest("[data-a]");if(!a)return;const[k,v
  if(k=="p"){P=v;tab=v=="tt"?"fy":"home";V=null;Q="";$("sq").value=""}if(k=="t"){tab=v;V=null}if(k=="v")V=+v;if(k=="c"){Q=v;$("sq").value=v}
  chrome();soc();scrollTo(0,0)};
 ''')
+
+# 11. The learner brain: signals from watching and reviewing, the sentence verdict chip, AI-made flashcards, review order, tutor level
+rep('<script src="safina-boot.js"></script>', '<script src="safina-brain.js"></script>\n<script src="safina-boot.js"></script>')
+rep('<script src="safina-ai-ui.js"></script>', '<script src="safina-ai-ui.js"></script>\n<script src="safina-brain-ui.js"></script>')
+rep('<script src="safina-brain-ui.js"></script>', '<script src="safina-brain-ui.js"></script>\n<script src="safina-learn-ui.js"></script>')
+# video behaviour: pauses (count and length), skips and rewinds, and watch time
+rep("if(!v.paused&&!v.ended&&$(\"watch\").classList.contains(\"show\"))day().sec+=dt;",
+    "if(!v.paused&&!v.ended&&$(\"watch\").classList.contains(\"show\")){day().sec+=dt;try{BRAIN.track('watch',dt)}catch(e){}};")
+rep("let lastT=Date.now(),scT=0;",
+    "let __pz=0;v.addEventListener('pause',()=>{if(!v.ended&&$('watch').classList.contains('show'))__pz=Date.now()});v.addEventListener('play',()=>{if(__pz){const d=(Date.now()-__pz)/1000;__pz=0;if(d>0.7&&d<1800)try{BRAIN.track('pauses',1);BRAIN.track('pauseSec',d)}catch(e){}}});v.addEventListener('seeked',()=>{try{BRAIN.track('seeks',1)}catch(e){}});\nlet lastT=Date.now(),scT=0;")
+
+
+rep("  renderTokens($('ar'),i);\n\n  const english=findEn(AR[i]).trim();\n  $('en').textContent=english",
+    "  renderTokens($('ar'),i);\n  try{if(typeof window.__ls==='number'&&i<window.__ls&&window.__ls-i<=8)BRAIN.lineReplayed(AR[i].t);window.__ls=i;BRAIN.lineShown(AR[i].t,{src:(typeof curTitle==='string'?curTitle:'')});BRAIN.tick()}catch(e){}\n\n  const english=findEn(AR[i]).trim();\n  $('en').textContent=english")
+rep("  renderTokens($('pAr'),i);\n  $('pidx').textContent=(i+1)+' / '+AR.length;",
+    "  renderTokens($('pAr'),i);\n  $('pidx').textContent=(i+1)+' / '+AR.length;\n  if(window.SAFINA_CHIP)SAFINA_CHIP(i);")
+rep("async function lookup(tok,i){", "async function lookup(tok,i){\n  try{BRAIN.wordTapped(tok,AR[i]&&AR[i].t)}catch(e){}")
+rep("async function showMean(tok,k,i){\n  const w=clean(tok),my=++ms;", "async function showMean(tok,k,i){\n  const w=clean(tok),my=++ms;try{BRAIN.wordTapped(w,AR[i]&&AR[i].t)}catch(e){}")
+rep("function playLoaded(o){\n try{\n", "function playLoaded(o){\n try{\n  BRAIN.newSession();window.__ls=-1;\n")
+rep("v.hist.push([today(),r]);day().rev++;",
+    "v.hist.push([today(),r]);day().rev++;try{if(v.kind===\"line\"){if(r>0)BRAIN.tokens(v.lemma).forEach(t=>BRAIN.reviewed(t.w,true))}else BRAIN.reviewed(v.lemma,r>0)}catch(e){}")
+rep("async function saveCards(w,tr,i,force){\n", r'''/* flashcards the AI writes after it has looked at what you watched (level-fitted; marked with the brain icon) */
+window.SAFINA_ADDCARDS=cards=>{let n=0;
+  cards.forEach(c=>{const line=c.type==="line";
+    if(vocab.some(x=>line?(x.kind==="line"&&x.lemma===(c.sentence||c.lemma)):(x.kind!=="line"&&BRAIN.norm(x.lemma)===BRAIN.norm(c.lemma))))return;
+    vocab.push(newCard(line?{kind:"line",word:c.sentence||c.lemma,lemma:c.sentence||c.lemma,tr:c.meaning,sent:c.sentence||c.lemma,sentTr:c.meaning,auto:1,why:c.why,hint:c.hint,lvl:c.level,src:curTitle||"AI"}
+      :{kind:"word",word:c.word,lemma:c.lemma,tr:c.meaning,sent:c.sentence,sentTr:"",auto:1,why:c.why,hint:c.hint,lvl:c.level,src:curTitle||"AI"}));n++});
+  if(n){sv("lp_v",vocab);try{render();fillMissing()}catch(e){}toast("🧠 AI added "+n+" flashcard"+(n>1?"s":"")+" from what you watched")}
+  return n};
+async function saveCards(w,tr,i,force){
+  try{if(w!=null)BRAIN.saved(w,AR[i]&&AR[i].t)}catch(e){}
+''')
+rep('use its context. Learner\'s saved words: "', 'use its context. "+BRAIN.profileText()+" Learner\'s saved words: "')
+rep('window.__lsnPick=()=>{lsnState.clear();const S=(window.__lsn||{}).S||[];return lsnShuf(S.filter(x=>x.due)).concat(lsnShuf(S.filter(x=>!x.due)))};',
+    'window.__lsnPick=()=>{lsnState.clear();const S=(window.__lsn||{}).S||[],rk=a=>BRAIN.rank(a.map(x=>(x.text=x.ar.join(" "),x)));return rk(S.filter(x=>x.due)).concat(rk(S.filter(x=>!x.due)))};   /* sentences with the most words you do not know yet come first */')
+rep('''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>whole line</div>":"")+"</td><td>"+v.tr+''',
+    '''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>whole line</div>":"")+(v.auto?"<div class='mu' style='direction:ltr;text-align:left'>🧠 AI"+(v.lvl?" · "+esc(v.lvl):"")+(v.why?" · "+esc(v.why):"")+"</div>":"")+"</td><td>"+v.tr+''')
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('patched OK ->', dst, len(s), 'chars')

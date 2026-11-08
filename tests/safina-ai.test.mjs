@@ -359,3 +359,79 @@ test('state survives a reload and a removed account never stays active', async (
   b.removeAccount(id);
   assert.equal(b.active(), null);
 });
+
+/* ---------------------------------------------------------------- which AI for which job */
+function twoAccountsPlusLocal() {
+  const localCalls = [];
+  const m = make(req => (req.url.includes('anthropic') ? claudeReply('from claude') : openaiReply('from gpt')),
+    { local: { ready: () => true, label: () => 'Phone AI', chat: async a => { localCalls.push(a); return 'from phone'; } }, askLimit: async () => { throw new Error('must not ask during background work'); } });
+  m.ai.addAccount({ provider: 'openai', key: 'k1', label: 'A' });
+  m.ai.addAccount({ provider: 'anthropic', key: 'k2', label: 'B' });
+  m.localCalls = localCalls;
+  return m;
+}
+
+test('tiers: heavy jobs use the API first, light jobs use the on-phone model first, and the chosen AI is not changed', async () => {
+  const { ai, calls, localCalls } = twoAccountsPlusLocal();
+  const before = JSON.stringify(ai.state().active);
+  const h = await ai.chat({ system: 's', messages: [{ r: 'me', t: 'x' }], tier: 'heavy' });
+  assert.equal(h.text, 'from gpt'); assert.equal(localCalls.length, 0);
+  const l = await ai.chat({ system: 's', messages: [{ r: 'me', t: 'x' }], tier: 'light' });
+  assert.equal(l.text, 'from phone'); assert.equal(calls.length, 1, 'the light job made no API call');
+  assert.equal(JSON.stringify(ai.state().active), before, 'background work never changes the AI the user picked');
+  assert.equal(ai.pick('heavy').accountId !== 'local', true); assert.equal(ai.pick('light').accountId, 'local');
+});
+
+test('tiers: with no on-phone model a light job uses the API; with no API a heavy job uses the phone', async () => {
+  let m = make(() => openaiReply('from gpt')); m.ai.addAccount({ provider: 'openai', key: 'k', label: 'A' });
+  assert.equal((await m.ai.chat({ system: 's', messages: [{ r: 'me', t: 'x' }], tier: 'light' })).text, 'from gpt');
+  m = make(() => openaiReply('x'), { local: { ready: () => true, chat: async () => 'from phone' } });
+  assert.equal((await m.ai.chat({ system: 's', messages: [{ r: 'me', t: 'x' }], tier: 'heavy' })).text, 'from phone');
+  assert.equal(m.ai.isLocalSlot(m.ai.pick('heavy')), true);
+});
+
+test('quiet background job: when the API hits its limit it falls back by itself and never asks the user', async () => {
+  const { ai, localCalls } = twoAccountsPlusLocal();
+  // both API accounts are out of quota; a normal chat would ask, a quiet heavy job drops to the phone
+  const { ai: ai2, localCalls: lc2 } = (() => { const x = make(() => quota(), { local: { ready: () => true, chat: async () => 'from phone' }, askLimit: async () => { throw new Error('asked'); } }); x.ai.addAccount({ provider: 'openai', key: 'k', label: 'A' }); return { ai: x.ai, localCalls: [] }; })();
+  const r = await ai2.chat({ system: 's', messages: [{ r: 'me', t: 'x' }], tier: 'heavy', quiet: true });
+  assert.equal(r.text, 'from phone'); assert.equal(r.switched, null);
+});
+
+test('limit: powerful AI used up -> on-phone AI takes over without asking, and the API is used again after it resets', async () => {
+  let t = 1000000, asked = false, limited = true;
+  const local = { ready: () => true, chat: async () => 'from phone' };
+  const { ai } = make(() => limited ? rate() : claudeReply('from api'), { now: () => t, local, askLimit: async () => { asked = true; return null; } });
+  ai.addAccount({ provider: 'anthropic', key: 'K1' });
+  const r = await ai.chat({ messages: [{ r: 'me', t: 'x' }] });
+  assert.equal(r.text, 'from phone'); assert.equal(asked, false);
+  limited = false; t += 120000;
+  assert.equal((await ai.chat({ messages: [{ r: 'me', t: 'y' }] })).text, 'from api');
+});
+
+test('AI log: the whole prompt and the whole reply are kept, including failed attempts, and survive a restart', async () => {
+  const mem = {}; const store = { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); } };
+  const local = { ready: () => true, chat: async () => 'from phone' };
+  const { ai } = make(() => rate(), { store, local });
+  ai.addAccount({ provider: 'anthropic', key: 'K1' });
+  await ai.chat({ system: 'SYS', messages: [{ r: 'me', t: 'make flashcards for X' }], purpose: 'write-flashcards', tier: 'heavy', quiet: true });
+  const l = ai.log.list();
+  assert.equal(l.length, 2);
+  assert.equal(l[0].ok, false); assert.match(l[0].error, /limit/); assert.equal(l[0].purpose, 'write-flashcards');
+  assert.equal(l[1].ok, true); assert.equal(l[1].reply, 'from phone'); assert.equal(l[1].system, 'SYS'); assert.match(l[1].prompt, /make flashcards for X/);
+  assert.ok(!JSON.stringify(l).includes('K1'));
+  ai.flush();
+  const again = SA.create({ http: async () => rate(), store });
+  assert.equal(again.log.count(), 2);
+  assert.match(again.log.exportText(), /make flashcards for X/); assert.equal(JSON.parse(again.log.exportJSON()).count, 2);
+  again.setOption('logAI', false); again.log.clear();
+  await again.chat({ messages: [{ r: 'me', t: 'x' }] }).catch(() => {});
+  assert.equal(again.log.count(), 0);
+});
+
+test('AI log: bounded, oldest entries dropped first', async () => {
+  const { ai } = make(() => claudeReply('r'.repeat(50)), { logMax: 5 });
+  ai.addAccount({ provider: 'anthropic', key: 'K' });
+  for (let i = 0; i < 9; i++) await ai.chat({ messages: [{ r: 'me', t: 'q' + i }] });
+  const l = ai.log.list(); assert.equal(l.length, 5); assert.match(l[0].prompt, /q4/); assert.match(l[4].prompt, /q8/);
+});

@@ -36,7 +36,17 @@
     store, http,
     local: M.local,
     mt: M.marian,
+    level: () => (window.BRAIN ? window.BRAIN.level().level : ''),
     askLimit: o => (window.SafinaUI ? window.SafinaUI.askLimit(o) : Promise.resolve(null))
+  });
+  /* The learner brain: watches what the learner does and has the AI (on-phone or API) judge it. */
+  window.BRAIN = window.SafinaBrain.create({
+    store, ai: window.SAI,
+    parseJSON: window.SafinaAI.parseLooseJSON,
+    ready: () => window.SAI.aiAvailable(),
+    isLocal: tier => window.SAI.isLocalSlot(window.SAI.pick(tier || 'heavy') || window.SAI.active()),
+    lang: () => { const l = window.SAI.lang(); return { learn: l.learn, native: l.native, learnName: window.SAI.langInfo(l.learn).name, nativeName: window.SAI.langInfo(l.native).name }; },
+    addCards: c => (window.SAFINA_ADDCARDS ? window.SAFINA_ADDCARDS(c) : 0)
   });
   M.verify().catch(() => { /* not in the app, nothing to verify */ });
 })();

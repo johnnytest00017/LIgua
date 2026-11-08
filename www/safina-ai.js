@@ -225,11 +225,39 @@
     const listeners = {};
     const emit = (ev, data) => (listeners[ev] || []).forEach(f => { try { f(data); } catch (_) { /* listener bug must not break translation */ } });
 
-    const DEFAULTS = { v: 1, accounts: [], active: null, autoSwitch: false, mtMode: 'local', refine: true, lang: { learn: 'ar', native: 'en' }, limits: {}, invalid: {} };
+    const DEFAULTS = { v: 1, accounts: [], active: null, autoSwitch: false, localOnLimit: true, logAI: true, mtMode: 'local', refine: true, lang: { learn: 'ar', native: 'en' }, limits: {}, invalid: {} };
     let S = Object.assign({}, DEFAULTS, store.get('safina.ai.v1', {}) || {});
     S.lang = Object.assign({}, DEFAULTS.lang, S.lang);
     S.accounts = S.accounts || []; S.limits = S.limits || {}; S.invalid = S.invalid || {};
     const save = () => { store.set('safina.ai.v1', S); emit('state', S); };
+
+    /* ---------------- the AI log: every prompt and every reply, whole ----------------
+     * One entry per attempt (a failed attempt and the fallback that answered are separate entries), newest last.
+     * Kept on this phone only. Bounded so it cannot fill the storage: oldest entries go first. */
+    const LOG_KEY = 'safina.ailog.v1', LOG_MAX = deps.logMax || 600, LOG_CHARS = deps.logChars || 1500000;
+    let LOG = []; try { LOG = store.get(LOG_KEY, []) || []; if (!Array.isArray(LOG)) LOG = []; } catch (_) { LOG = []; }
+    let logTimer = null;
+    const logSize = () => LOG.reduce((n, e) => n + (e.system || '').length + (e.prompt || '').length + (e.reply || '').length + (e.error || '').length + 120, 0);
+    function logFlush() { clearTimeout(logTimer); logTimer = null; try { store.set(LOG_KEY, LOG); } catch (_) { LOG = LOG.slice(Math.floor(LOG.length / 2)); try { store.set(LOG_KEY, LOG); } catch (__) { /* storage full: keep in memory */ } } }
+    function logAdd(e) {
+      if (S.logAI === false) return;
+      LOG.push(e);
+      while (LOG.length > LOG_MAX || (LOG.length > 1 && logSize() > LOG_CHARS)) LOG.shift();
+      if (!logTimer) { logTimer = setTimeout(logFlush, 400); if (logTimer && logTimer.unref) logTimer.unref(); }
+      emit('log', LOG.length);
+    }
+    const msgText = m => String(m.t != null ? m.t : m.text != null ? m.text : m.content != null ? m.content : '');
+    const logApi = {
+      list: () => LOG.slice(),
+      count: () => LOG.length,
+      size: logSize,
+      clear: () => { LOG = []; logFlush(); emit('log', 0); },
+      /* everything, as JSON, to save or send */
+      exportJSON: () => JSON.stringify({ app: 'Safina', what: 'Every prompt sent to an AI and every reply, whole', exported: new Date(now()).toISOString(), count: LOG.length, entries: LOG }, null, 2),
+      /* the same, written to be read by a person */
+      exportText: () => LOG.map((e, i) => '=== #' + (i + 1) + '  ' + new Date(e.at).toISOString() + '  ' + (e.purpose || 'chat') + '  via ' + e.via + '  ' + (e.ok ? 'OK' : 'FAILED') + '  ' + e.ms + ' ms\n' +
+        (e.system ? '--- system ---\n' + e.system + '\n' : '') + '--- prompt ---\n' + e.prompt + '\n' + (e.ok ? '--- reply ---\n' + e.reply : '--- error ---\n' + e.error) + '\n').join('\n')
+    };
 
     /* ---------------- accounts ---------------- */
     const P = id => PROVIDERS[id] || null;
@@ -305,11 +333,26 @@
       return out;
     }
     function resolveActive() {
+      /* Switched to the on-phone AI only because a limit ran out: go back as soon as the limit has reset. */
+      if (S.returnTo && S.active && S.active.accountId === 'local' && usable(S.returnTo)) { S.active = S.returnTo; S.returnTo = null; save(); }
       if (S.active && usable(S.active)) return S.active;
       return defaultSlots()[0] || null;
     }
     function setActive(slot) { S.active = slot; softReset(); save(); }
     const aiAvailable = () => !!resolveActive();
+
+    /* Which AI for which job.  heavy = rare, demanding jobs (judging a batch of sentences, writing flashcards, conjugation drills):
+     * the powerful API account first, the on-phone model only if no API account is usable.
+     * light = frequent small jobs (explaining a mistake, a quick hint): the free on-phone model first, so the limited API is saved.
+     * The chosen slot is not remembered as "the active AI", so background work never changes what the user picked. */
+    function orderedSlots(tier) {
+      const all = defaultSlots();
+      let cloud = all.filter(s => s.accountId !== 'local');
+      if (S.active && S.active.accountId !== 'local') cloud = cloud.slice().sort((a, b) => (sameSlot(b, S.active) ? 1 : 0) - (sameSlot(a, S.active) ? 1 : 0));
+      const local = localReady() ? [LOCAL] : [];
+      return tier === 'light' ? local.concat(cloud) : cloud.concat(local);
+    }
+    const pick = tier => orderedSlots(tier)[0] || null;
 
     /* all slots for pickers: every account x its known models, plus the local model */
     function listSlots() {
@@ -386,6 +429,8 @@
     const pending = {};
     async function onLimit(slot, err, tried) {
       if (S.active && !sameSlot(S.active, slot) && usable(S.active) && !tried.has(slotKey(S.active))) return S.active; // someone already chose
+      /* The powerful AI is used up: carry on with the free on-phone AI without interrupting the learner. */
+      if (S.localOnLimit !== false && slot.accountId !== 'local' && usable(LOCAL) && !tried.has(slotKey(LOCAL))) { if (!S.returnTo) S.returnTo = slot; return LOCAL; }
       const opts = limitOptions(slot, err, tried);
       if (!opts.length) throw new AIError('limit', 'Limit reached on ' + describe(slot) + ' (' + err.message + '). No other AI is set up: add an account or download the on-phone AI in AI settings.', { final: true });
       if (S.autoSwitch || !deps.askLimit) return opts[0].slot;
@@ -398,23 +443,25 @@
 
     /* ---------------- chat (the tutor + anything else) ---------------- */
     async function chat(o) {
-      const first = resolveActive();
+      const first = o.tier ? pick(o.tier) : resolveActive();
       let slot = first, retries = 0;
       const tried = new Set();
-      const nextAuto = () => defaultSlots().find(s => !tried.has(slotKey(s))) || null;
+      const nextAuto = () => (o.tier ? orderedSlots(o.tier) : defaultSlots()).find(s => !tried.has(slotKey(s))) || null;
       for (let n = 0; n < 10; n++) {
         if (!slot) throw new AIError('none', 'No AI is available. Add an account or download the on-phone AI in AI settings.');
         tried.add(slotKey(slot));
         if (!usable(slot)) { slot = nextAuto(); continue; }
         try {
           emit('status', 'Asking ' + describe(slot) + '…');
-          const text = await callSlot(slot, o);
-          if (!sameSlot(slot, S.active)) { S.active = slot; save(); }
+          const t0 = now(), rec = { id: t0 + '-' + LOG.length, at: t0, purpose: o.purpose || 'chat', tier: o.tier || '', via: describe(slot), system: String(o.system || ''), prompt: (o.messages || []).filter(m => (m.r || m.role) !== 'sys').map(m => (((m.r || m.role) === 'me' || (m.r || m.role) === 'user') ? 'USER: ' : 'AI: ') + msgText(m)).join('\n\n') + (o.images && o.images.length ? '\n[' + o.images.length + ' image(s) attached, not stored]' : '') };
+          let text; try { text = await callSlot(slot, o); } catch (er) { logAdd(Object.assign(rec, { ok: false, ms: now() - t0, reply: '', error: (er && er.kind ? er.kind + ': ' : '') + (er && er.message || er) })); throw er; }
+          logAdd(Object.assign(rec, { ok: true, ms: now() - t0, reply: text, error: '' }));
+          if (!o.tier && !sameSlot(slot, S.active)) { S.active = slot; save(); }
           emit('status', '');
-          return { text, via: via(slot), switched: first && !sameSlot(first, slot) ? { from: describe(first), to: describe(slot) } : null };
+          return { text, via: via(slot), switched: !o.tier && first && !sameSlot(first, slot) ? { from: describe(first), to: describe(slot) } : null };
         } catch (e) {
           if (!(e instanceof AIError) || (o.signal && o.signal.aborted)) throw e;
-          if (e.kind === 'limit') { markLimit(slot, e); slot = await onLimit(slot, e, tried); continue; }
+          if (e.kind === 'limit') { markLimit(slot, e); slot = o.quiet ? nextAuto() : await onLimit(slot, e, tried); continue; }   // quiet = background job: fall back without asking
           if (e.kind === 'auth') { markInvalid(slot); slot = nextAuto(); continue; }
           if ((e.kind === 'overload' || e.kind === 'network') && retries < 1) { retries++; await sleep(deps.retryDelay != null ? deps.retryDelay : 900); tried.delete(slotKey(slot)); continue; }
           if (e.kind === 'overload' || e.kind === 'network' || e.kind === 'empty' || (e.kind === 'bad' && /model|not found|does not exist|unsupported/i.test(e.message))) { slot = nextAuto(); continue; }
@@ -472,7 +519,7 @@
       clearTimeout(tcacheTimer);
       tcacheTimer = setTimeout(flush, 600);
     }
-    function flush() { clearTimeout(tcacheTimer); try { store.set('safina.tcache.v1', tcache); } catch (_) { tcache = {}; } }
+    function flush() { logFlush(); clearTimeout(tcacheTimer); try { store.set('safina.tcache.v1', tcache); } catch (_) { tcache = {}; } }
     function clearCache() { tcache = {}; soft.clear(); flush(); }
 
     /* --- stage 1: the machine-translation draft --- */
@@ -538,7 +585,7 @@
         (near ? 'Nearby lines for context:\n' + near + '\n' : '') +
         '\nReturn ONLY a JSON object with these keys: "translation": the corrected ' + langInfo(tgt).name + ' translation. ' + diaRule(src) +
         '"meaning": one short sentence explaining the meaning in context, ONLY if the line is an idiom, dialect, wordplay or ambiguous, otherwise an empty string.';
-      const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }], signal });
+      const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }], signal, purpose: 'translate-line' });
       let obj = parseLooseJSON(r.text);
       if (obj && !Array.isArray(obj)) { const out = applyItem(obj, text, draft, src, tgt, r.via); if (out) return out; }
       const plain = cleanLine(String(r.text).split('\n')[0]);          // small models often ignore the JSON request
@@ -551,7 +598,7 @@
       const user = 'Translate these ' + langInfo(src).name + ' subtitle lines (they are consecutive lines of one scene).\n' + JSON.stringify(payload) +
         '\n\nReturn ONLY a JSON array with one object per line, same "i": {"i": number, "translation": corrected ' + langInfo(tgt).name + ' translation, ' +
         diaRule(src).replace(/"source_diacritized"/, '"source_diacritized"') + '"meaning": short sentence ONLY for idioms/dialect/ambiguity, otherwise ""}.';
-      const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }] });
+      const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }], purpose: 'translate-batch' });
       const arr = parseLooseJSON(r.text);
       const out = new Array(items.length).fill(null);
       if (Array.isArray(arr)) arr.forEach(o => { const i = o && +o.i; if (i >= 0 && i < items.length) out[i] = applyItem(o, items[i].text, items[i].draft, src, tgt, r.via); });
@@ -636,7 +683,7 @@
           (wantDia(src) ? '"diacritized": the word with full ' + LANGS[src].diac + ' as pronounced here. ' : '') +
           '"lemma": the dictionary form of this word in ' + langInfo(src).name + ' (without the clitics or inflection attached here). "pos": part of speech. "root": the root if the language has one, else "". "note": one short sentence of useful context (dialect, idiom, grammar) or "".';
         try {
-          const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }] });
+          const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }], purpose: 'word-lookup' });
           const o = parseLooseJSON(r.text);
           if (o && !Array.isArray(o) && cleanLine(o.gloss)) {
             out = { gloss: cleanLine(o.gloss), lemma: cleanLine(o.lemma) || word, d: wantDia(src) ? alignDiacritics(word, cleanLine(o.diacritized), src) : '', pos: String(o.pos || ''), root: String(o.root || ''), note: String(o.note || '').slice(0, 240), refined: true, via: r.via };
@@ -653,7 +700,8 @@
     /* The tutor system prompt follows the language being learned. */
     function tutorSystem(extra) {
       const L = langInfo(S.lang.learn), N = langInfo(S.lang.native);
-      return 'You are a friendly ' + L.name + ' tutor for a ' + N.name + '-speaking beginner (A1). Answer simply in ' + N.name + ' with short ' + L.name + ' examples (add pronunciation in Latin letters when helpful' +
+      const lv = deps.level ? String(deps.level() || '') : '';
+      return 'You are a friendly ' + L.name + ' tutor for a ' + N.name + '-speaking ' + (lv ? 'learner at CEFR level ' + lv : 'beginner (A1)') + '. Answer simply in ' + N.name + ' with short ' + L.name + ' examples (add pronunciation in Latin letters when helpful' +
         (wantDia(S.lang.learn) ? ', and write ' + L.name + ' examples with ' + LANGS[S.lang.learn].diac : '') + '). ' + (extra || '');
     }
 
@@ -662,8 +710,8 @@
       on(ev, f) { (listeners[ev] = listeners[ev] || []).push(f); },
       state: () => S, save, setOption, lang, langInfo,
       addAccount, updateAccount, removeAccount, moveAccount, refreshModels, testAccount,
-      listSlots, setActive, active: resolveActive, describe, localReady, aiAvailable, usable,
-      chat, translateLine, prefetch, lookupWord, tutorSystem, clearCache, flush,
+      listSlots, setActive, active: resolveActive, describe, localReady, aiAvailable, usable, pick, isLocalSlot: s => !!s && s.accountId === 'local',
+      chat, log: logApi, translateLine, prefetch, lookupWord, tutorSystem, clearCache, flush,
       cached: (text, o) => { o = o || {}; return tcache[cacheKey('l', o.src || S.lang.learn, o.tgt || S.lang.native, String(text || '').trim())] || null; }
     };
   }

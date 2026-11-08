@@ -155,7 +155,8 @@ test('on-device translator passes folder, prefix and script to the bundle', asyn
 
 test('built-in sources: with nothing configured the app still knows where to download the translator and the AI', async () => {
   const f = fakeEnv(); const M = factory(f.env);
-  assert.equal((await M.loadManifest(['ar', 'en'])).translators.length, 0, 'off by default: no guessed addresses');
+  M.setConfig({ allowBuiltin: false });
+  assert.equal((await M.loadManifest(['ar', 'en'])).translators.length, 0, 'can be switched off');
   M.setConfig({ allowBuiltin: true });
   const m = await M.loadManifest(['ar', 'en']);
   assert.equal(m.source, 'built-in');
@@ -204,4 +205,10 @@ test('autoSetup reports a failed download (not a crash) and does not hammer the 
   assert.equal(r.failed.length, 1); assert.match(r.failed[0].error, /not found/i); assert.ok(!M.hasTranslator('ar', 'en'));
   const n = f.downloads.length; const r2 = await M.autoSetup({ learn: 'ar', native: 'en' });
   assert.equal(f.downloads.length, n); assert.ok(r2.skipped.some(s => /failed earlier/.test(s)));
+});
+
+test('English to Arabic carries the >>ara<< language tag; Arabic to English does not', async () => {
+  const M = factory(fakeEnv().env); const m = await M.loadManifest(['ar', 'en']);
+  assert.equal(m.translators.find(x => x.id === 'en-ar').prefix, '>>ara<<');
+  assert.equal(m.translators.find(x => x.id === 'ar-en').prefix, '');
 });
