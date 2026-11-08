@@ -80,3 +80,11 @@ test('the page prepares subtitles before playing and keeps the layout still', ()
   assert.match(page, /#watch #onnxStatus\{height:16px/);                       // the status line no longer pushes the video around
   assert.match(page, /tick\.__l/);                                              // time bar updates are throttled
 });
+
+test('the page loads the film manager before the preparing screen, and the Cards tab is wired to the AI practice', () => {
+  const page = read('www/both_25.html');
+  assert.ok(exists('www/safina-film.js'));
+  assert.ok(page.indexOf('safina-film.js') > 0 && page.indexOf('safina-film.js') < page.indexOf('safina-prep-ui.js'));
+  assert.match(page, /SAFINA_PREP_BUSY=true/);
+  assert.match(read('www/safina-learn-ui.js'), /#cards \[data-p="rev"\]/);
+});

@@ -426,10 +426,21 @@
       });
       return best;
     }
+    /* the most recent line where the learner met this word, and which of its other words they understood or not */
+    function contextFor(k) {
+      for (let i = S.order.length - 1; i >= 0; i--) {
+        const L = S.lines[S.order[i]]; if (!L) continue;
+        const toks = tokens(L.t); if (!toks.some(t => t.k === k)) continue;
+        const seen = new Set(), understood = [], notUnderstood = [];
+        toks.forEach(t => { if (t.k === k || seen.has(t.k)) return; seen.add(t.k); ((L.taps || []).includes(t.k) || wordP(t.w) < 0.5 ? notUnderstood : understood).push(t.w); });
+        return { text: L.t, src: L.src || '', understood: understood.slice(0, 8), notUnderstood: notUnderstood.slice(0, 8) };
+      }
+      return null;
+    }
     function addCard(o) {
       const key = lineKey(o.text); if (!key || S.cards.some(c => lineKey(c.text) === key)) return null;
       const c = { id: 'c' + (++S.seq), text: String(o.text).trim(), tr: o.tr || '', hint: o.hint || '', targets: o.targets.map(norm), src: o.src || 'video', from: o.from || '', stage: o.stage || 0,
-        created: now(), due: now(), ivl: 0, ease: 2.5, reps: 0, hist: [] };
+        met: String(o.met || '').slice(0, 300), created: now(), due: now(), ivl: 0, ease: 2.5, reps: 0, hist: [] };
       S.cards.push(c);
       if (S.cards.length > 400) { const gone = S.cards.filter(x => x.ivl >= 30).sort((a, b) => a.due - b.due)[0] || S.cards[0]; S.cards.splice(S.cards.indexOf(gone), 1); }
       return c;
@@ -446,15 +457,17 @@
       const ks = Object.keys(S.words);
       const known = ks.filter(k => wordP(k) >= 0.8).sort((a, b) => S.words[b].ex - S.words[a].ex).slice(0, small ? 25 : 80).map(k => S.words[k].w);
       const data = { learning: L.learnName || L.learn, native: L.nativeName || L.native, level: S.level || lv.level, known_words: known,
-        items: need.map((t, i) => { const sp = STAGES[S.words[t.k].stage || 0]; return { i, target: S.words[t.k].w, why: t.why, other_unknown_words_allowed: sp.maxOther, max_words: sp.maxLen }; }) };
+        items: need.map((t, i) => { const sp = STAGES[S.words[t.k].stage || 0], cx = contextFor(t.k); return { i, target: S.words[t.k].w, why: t.why, other_unknown_words_allowed: sp.maxOther, max_words: sp.maxLen,
+          met_in_this_line: cx ? cx.text : '', understood_in_that_line: cx ? cx.understood : [], not_understood_in_that_line: cx ? cx.notUnderstood : [] }; }) };
       const age = ageYears(); if (age && S.profile.shareAge !== false) data.learner_age = age;
-      return 'Learner data:\n' + JSON.stringify(data) + '\n\nFor each item write ONE natural sentence in ' + data.learning + ' that uses the target word. Build the sentence mostly from known_words, so the target is the only thing the learner has to figure out (other_unknown_words_allowed is how many other new words you may use). ' +
+      return 'Learner data:\n' + JSON.stringify(data) + '\n\nFor each item write ONE NEW natural sentence in ' + data.learning + ' that uses the target word. Follow the i+1 principle: "i" is what the learner knows now (known_words, plus the words they understood in the line where they met the target), and "+1" is the target word, slightly above their level, so they can work out its meaning from the rest of the sentence. Build the sentence from known_words plus the target; other_unknown_words_allowed is how many other new words you may add. Do not copy met_in_this_line: write a different sentence that shows the target in a fresh context. ' +
         'Keep it at most max_words words, everyday and suitable for the learner\'s age and level. Give "form": the target exactly as it appears in your sentence. Give "meaning": the sentence translated into ' + data.native + ', and "hint": one short memory or grammar tip (under 12 words).\n' +
         'Reply with JSON only: {"cards":[{"i":0,"form":"","text":"","meaning":"","hint":""}]}';
     }
     const CARD_SYSTEM = 'You write sentence flashcards for a language learner, one new word at a time, using words the learner already knows. You reply with JSON only.';
     let preparing = false;
-    /* make sure there are enough new cards: first from sentences already met (free), then written by the AI (one API call for the lot) */
+    /* make sure there are enough new cards. The AI writes each sentence (known words + the one new word, i+1), using what the learner
+     * met and understood. Sentences from the video are only the fallback when the AI is not available or its sentence does not fit. */
     async function prepare(o) {
       o = o || {};
       if (preparing || !S.on) return { skipped: preparing ? 'busy' : 'off' };
@@ -463,29 +476,35 @@
       preparing = true; emit('preparing', true);
       const res = { made: 0, fromLines: 0, fromAI: 0, error: '' };
       try {
-        const need = [];
-        targets(want * 2).forEach(t => {
-          if (res.fromLines >= want) return;
-          const spec = STAGES[S.words[t.k].stage || 0], f = findLine(t.k, spec);
-          if (f && addCard({ text: f.text, targets: [t.k], src: 'video', from: f.src, stage: S.words[t.k].stage || 0 })) { res.fromLines++; res.made++; }
-          else need.push(t);
-        });
-        const ask = need.slice(0, Math.max(0, want - res.fromLines));
-        if (ask.length && ai && (!deps.ready || deps.ready())) {
+        const ts = targets(want * 2), ask = ts.slice(0, want), useAI = !!ai && (!deps.ready || deps.ready());
+        const done = new Set();
+        if (useAI && ask.length) {
           try {
             const r = await ai.chat({ system: CARD_SYSTEM, messages: [{ r: 'me', t: cardPrompt(ask) }], tier: 'heavy', purpose: 'write-flashcards', quiet: true });
             const j = (deps.parseJSON || JSON.parse)(r.text);
             if (!j || !Array.isArray(j.cards)) throw new Error('The AI did not return flashcards.');
+            const weak = [];
             j.cards.forEach(c => {
-              const t = ask[+c.i]; if (!t || !c.text || !c.form) return;
-              const spec = STAGES[S.words[t.k].stage || 0];
-              if (checkSentence(String(c.text), String(c.form), spec)) return;
-              if (addCard({ text: String(c.text), tr: String(c.meaning || ''), hint: String(c.hint || ''), targets: [t.k], src: 'ai', stage: S.words[t.k].stage || 0 })) { res.fromAI++; res.made++; }
+              const t = ask[+c.i]; if (!t || done.has(t.k) || !c.text || !c.form) return;
+              const spec = STAGES[S.words[t.k].stage || 0], bad = checkSentence(String(c.text), String(c.form), spec), cx = contextFor(t.k);
+              const card = { text: String(c.text), tr: String(c.meaning || ''), hint: String(c.hint || ''), targets: [t.k], src: 'ai', stage: S.words[t.k].stage || 0, met: cx ? cx.text : '', from: cx ? cx.src : '' };
+              if (!bad) { if (addCard(card)) { res.fromAI++; res.made++; done.add(t.k); } }
+              else if (bad === 'uses too many words you do not know') weak.push({ t, card, u: unknownIn(card.text, norm(c.form)) });
             });
+            /* a learner who knows very little yet cannot get a perfect i+1 sentence: take the closest ones instead of nothing */
+            if (!res.fromAI) weak.sort((x, y) => x.u - y.u).slice(0, want).forEach(w => { if (w.u <= STAGES[S.words[w.t.k].stage || 0].maxOther + 3 && addCard(w.card)) { res.fromAI++; res.made++; done.add(w.t.k); } });
             S.cardError = res.fromAI ? '' : 'The AI wrote sentences that did not fit your level, so none were kept. Try again.';
             if (!res.fromAI) res.error = S.cardError;
           } catch (e) { res.error = S.cardError = String(e && e.message || e); }
-        } else if (ask.length && !res.fromLines) res.error = S.cardError = 'No AI is available to write new sentences. Add an account or download the on-phone AI.';
+        }
+        /* fallback: a sentence you already met in the video that fits */
+        ts.forEach(t => {
+          if (res.made >= want || done.has(t.k)) return;
+          const spec = STAGES[S.words[t.k].stage || 0], f = findLine(t.k, spec), cx = contextFor(t.k);
+          if (f && addCard({ text: f.text, targets: [t.k], src: 'video', from: f.src, stage: S.words[t.k].stage || 0, met: cx ? cx.text : '' })) { res.fromLines++; res.made++; done.add(t.k); }
+        });
+        if (!useAI && !res.made && ts.length) res.error = S.cardError = 'No AI is available to write new sentences. Add an account or download the on-phone AI.';
+        else if (res.made) S.cardError = res.fromAI ? '' : (useAI ? S.cardError : '');
         flush();
       } finally { preparing = false; emit('preparing', false); }
       emit('cards', res);

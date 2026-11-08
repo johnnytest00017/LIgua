@@ -36,7 +36,7 @@
   function open(name) {
     screen = name; st = {};
     root.classList.add('on'); document.body.style.overflow = 'hidden';
-    try { if (window.v && !window.v.paused) window.v.pause(); } catch (_) { /* no video yet */ }
+    try { const vv = document.getElementById('v'); if (vv && !vv.paused) vv.pause(); } catch (_) { /* no video yet */ }
     ({ practice, conj, words, progress })[name]();
   }
   function close() { root.classList.remove('on'); document.body.style.overflow = ''; screen = ''; try { speechSynthesis.cancel(); } catch (_) { /* ignore */ } if (window.render) try { window.render(); } catch (_) { /* ignore */ } paintHub(); }
@@ -58,7 +58,8 @@
     st = { q: B.queue(12), i: 0, done: [], err: r && r.error, made: r };
     if (!st.q.length) {
       body().innerHTML = '<div class="card"><b>Nothing to practise right now</b><div class="mu" style="margin:6px 0">Watch something and look up the words you do not know. I turn them into short sentences made of words you know plus one new word, and make them a little harder each time you get them right.</div>' +
-        (st.err ? '<div class="err">' + esc(st.err) + '</div>' : '') + '<div class="row"><button class="b pri" data-sl="again">Try to make sentences now</button></div></div>';
+        (st.err ? '<div class="err">' + esc(st.err) + '</div>' : '') + '<div class="row"><button class="b pri" data-sl="again">Try to make sentences now</button></div>' +
+        ((window.vocab || []).length ? '<div class="row"><button class="b" data-sl="oldrev">Review my saved cards the old way</button></div>' : '') + '</div>';
       return;
     }
     card();
@@ -84,7 +85,7 @@
     let tr = c.tr;
     if (!tr) { try { tr = (await SAI.translateLine(c.text)).t; c.tr = tr; } catch (e) { tr = ''; } }
     if (st.q[st.i] !== c) return;
-    const tg = c.hint ? '<div class="mu" style="margin-top:6px">💡 ' + esc(c.hint) + '</div>' : '';
+    const tg = (c.hint ? '<div class="mu" style="margin-top:6px">💡 ' + esc(c.hint) + '</div>' : '') + (c.met ? '<div class="mu" style="margin-top:6px">You met this word in: <span dir="auto">' + esc(c.met) + '</span></div>' : '');
     el.innerHTML = '<div class="card"><div dir="auto" style="font-size:18px">' + esc(tr || 'No translation available right now.') + '</div>' + tg + '</div>' +
       '<div class="card"><b>How difficult was this sentence?</b><div class="row"><button class="b" data-q="0">Could not follow</button><button class="b" data-q="1">Hard</button><button class="b" data-q="2">Good</button><button class="b" data-q="3">Easy</button></div></div>';
     document.querySelector('#sl .row [data-sl="reveal"]').disabled = true;
@@ -208,6 +209,7 @@
     else if (k === 'say') { const c = st.q && st.q[st.i]; if (c) say(c.text); }
     else if (k === 'reveal') reveal();
     else if (k === 'again') practice();
+    else if (k === 'oldrev') { window.__slOldRev = true; close(); const b = document.querySelector('#cards [data-p="rev"]'); if (b) b.click(); window.__slOldRev = false; }
     else if (k === 'check') check();
     else if (k === 'why') why();
     else if (k === 'conj' || k === 'conjmore') conj();
@@ -229,7 +231,26 @@
       '<button data-open="practice" class="pri" style="margin:0">📝 Practice sentences' + (due ? ' (' + due + ')' : '') + '</button><button data-open="conj" style="margin:0">🔤 Conjugation</button><button data-open="words" style="margin:0">📊 Your words</button><button data-open="progress" style="margin:0">📈 Progress</button></div>';
     c.appendChild(h);
   }
+  /* The Cards tab: "Start Learning" is the AI sentence practice (every sentence written by the AI at your level, I+1). */
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('#cards [data-p="rev"]');
+    if (!b || window.__slOldRev || !B.state().on) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); open('practice');
+  }, true);
+  function paintDue() {
+    const h = $('hdue'); if (!h || !B.state().on) return;
+    let n = 0; try { n = B.progress().cardsDue; } catch (_) { /* no brain yet */ }
+    const lvl = B.level(); h.textContent = (n ? n + ' AI sentence' + (n === 1 ? '' : 's') + ' due' : 'AI sentences for your level') + (lvl && lvl.level ? ' · ' + lvl.level : '');
+  }
+  (function wrapRender() {
+    if (typeof window.render !== 'function' || window.render.__sl) return;
+    const r0 = window.render;
+    window.render = function () { const x = r0.apply(this, arguments); try { paintDue(); } catch (_) { /* ignore */ } return x; };
+    window.render.__sl = true;
+  })();
+  B.on(ev => { if (ev === 'card' || ev === 'cards' || ev === 'assessed' || ev === 'option') setTimeout(paintDue, 0); });
   document.addEventListener('click', e => { const o = e.target.closest && e.target.closest('[data-open]'); if (o && (o.dataset.open in { practice: 1, conj: 1, words: 1, progress: 1 })) open(o.dataset.open); });
+  setTimeout(paintDue, 600);
   window.SafinaLearn = { open, close, paintHub };
   B.on(ev => { if (ev === 'assessed' || ev === 'option' || ev === 'reset' || ev === 'cards') setTimeout(paintHub, 0); });
   setInterval(paintHub, 1500);

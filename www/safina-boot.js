@@ -39,6 +39,9 @@
     level: () => (window.BRAIN ? window.BRAIN.level().level : ''),
     askLimit: o => (window.SafinaUI ? window.SafinaUI.askLimit(o) : Promise.resolve(null))
   });
+  /* When the AI accounts or models change, films that were waiting for an AI can be prepared. */
+  let aiTimer = null;
+  try { window.SAI.on('state', () => { clearTimeout(aiTimer); aiTimer = setTimeout(() => window.dispatchEvent(new Event('safina-ai-changed')), 2500); }); } catch (_) { /* no events */ }
   /* The learner brain: watches what the learner does and has the AI (on-phone or API) judge it. */
   window.BRAIN = window.SafinaBrain.create({
     store, ai: window.SAI,

@@ -295,11 +295,11 @@ rep('<script src="safina-boot.js"></script>', '<script src="safina-brain.js"></s
 rep('<script src="safina-ai-ui.js"></script>', '<script src="safina-ai-ui.js"></script>\n<script src="safina-brain-ui.js"></script>')
 rep('<script src="safina-brain-ui.js"></script>', '<script src="safina-brain-ui.js"></script>\n<script src="safina-learn-ui.js"></script>')
 # 12. Smooth playback: translate everything first (with progress), keep the layout still, do less work per frame
-rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-prep-ui.js"></script>')
+rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-film.js"></script>\n<script src="safina-prep-ui.js"></script>')
 rep('  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.")}\n catch(e){toast("Could not start playback: "+e.message)}}',
-    '  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");\n  else setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)}\n catch(e){toast("Could not start playback: "+e.message)}}')
+    '  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");\n  else{window.SAFINA_PREP_BUSY=true;setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){window.SAFINA_PREP_BUSY=false}},80)}}\n catch(e){toast("Could not start playback: "+e.message)}}')
 rep("  toast(msg.join(' · '));e.target.value=''};",
-    "  toast(msg.join(' · '));e.target.value='';setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)};")
+    "  toast(msg.join(' · '));e.target.value='';window.SAFINA_PREP_BUSY=true;setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){window.SAFINA_PREP_BUSY=false}},80)};")
 rep("async function translateMissingSubtitle(i){\n  if(i<0||!AR[i])return '';","async function translateMissingSubtitle(i){\n  if(window.SAFINA_PREP_BUSY)return '';\n  if(i<0||!AR[i])return '';")
 rep("function prefetchAhead(i){\n  try{","function prefetchAhead(i){\n  if(window.SAFINA_PREP_BUSY)return;\n  try{")
 # the two status lines above the video appeared and vanished (display:none when empty), which pushed the video up and down

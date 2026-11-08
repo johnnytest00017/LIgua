@@ -54,8 +54,8 @@ test('forgetting: a word answered right fades back toward "not sure" as the week
   assert.ok(brain.isLost('zork'), 'long unseen counts as lost');
 });
 
-test('cards: a sentence the learner already met with exactly one unknown word becomes a card without any AI call', async () => {
-  const { brain, calls } = mk();
+test('cards: when no AI is available, a sentence already met with exactly one unknown word is the fallback', async () => {
+  const { brain, calls } = mk({ ready: () => false });
   teachKnown(brain);
   see(brain, 'aa bb zork cc', 'Show A', 1);
   brain.wordTapped('zork', 'aa bb zork cc');
@@ -64,6 +64,31 @@ test('cards: a sentence the learner already met with exactly one unknown word be
   assert.equal(calls.length, 0); assert.equal(r.fromLines, 1);
   const c = brain.cards()[0];
   assert.equal(c.text, 'aa bb zork cc'); assert.deepEqual(c.targets, ['zork']); assert.equal(c.from, 'Show A'); assert.equal(c.stage, 0);
+});
+
+test('cards: the AI always writes the sentence (i+1), and is told the line the word was met in and which words were understood there', async () => {
+  const { brain, calls } = mk({ reply: () => ({ cards: [{ i: 0, form: 'zork', text: 'bb zork aa cc', meaning: 'b z a c', hint: 'h' }] }) });
+  teachKnown(brain);
+  see(brain, 'aa bb zork cc', 'Show A', 1);                 // a perfectly good sentence from the video exists...
+  brain.wordTapped('zork', 'aa bb zork cc');
+  const r = await brain.prepare({ count: 3 });
+  assert.equal(calls.length, 1, '...but the AI is still asked to write the card');
+  assert.equal(r.fromAI, 1); assert.equal(r.fromLines, 0);
+  const asked = JSON.parse(calls[0].messages[0].t.match(/Learner data:\n(\{.*\})/)[1]).items[0];
+  assert.equal(asked.target, 'zork'); assert.equal(asked.met_in_this_line, 'aa bb zork cc');
+  assert.deepEqual(asked.understood_in_that_line.sort(), ['aa', 'bb', 'cc']); assert.deepEqual(asked.not_understood_in_that_line, []);
+  assert.match(calls[0].messages[0].t, /i\+1/);
+  const c = brain.cards()[0]; assert.equal(c.text, 'bb zork aa cc'); assert.equal(c.src, 'ai'); assert.equal(c.met, 'aa bb zork cc'); assert.equal(c.from, 'Show A');
+});
+
+test('cards: a word the learner did not understand in a line is reported as not understood', async () => {
+  const { brain, calls } = mk({ reply: () => ({ cards: [] }) });
+  teachKnown(brain);
+  see(brain, 'aa zork blip cc', 'S', 1); brain.wordTapped('zork', 'aa zork blip cc'); brain.wordTapped('blip', 'aa zork blip cc');
+  await brain.prepare({ count: 2 });
+  const items = JSON.parse(calls[0].messages[0].t.match(/Learner data:\n(\{.*\})/)[1]).items;
+  const z = items.find(x => x.target === 'zork');
+  assert.deepEqual(z.understood_in_that_line.sort(), ['aa', 'cc']); assert.deepEqual(z.not_understood_in_that_line, ['blip']);
 });
 
 test('cards: with no fitting sentence the API writes one, and it is checked before it is kept', async () => {

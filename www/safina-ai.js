@@ -519,7 +519,13 @@
       clearTimeout(tcacheTimer);
       tcacheTimer = setTimeout(flush, 600);
     }
-    function flush() { logFlush(); clearTimeout(tcacheTimer); try { store.set('safina.tcache.v1', tcache); } catch (_) { tcache = {}; } }
+    function flush() {
+      logFlush(); clearTimeout(tcacheTimer);
+      /* If the phone's small storage is full, forget the OLDEST half and try again. Never throw everything away. */
+      for (let tries = 0; tries < 4; tries++) {
+        try { store.set('safina.tcache.v1', tcache); return; } catch (_) { const ks = Object.keys(tcache); ks.slice(0, Math.ceil(ks.length / 2)).forEach(k => delete tcache[k]); }
+      }
+    }
     function clearCache() { tcache = {}; soft.clear(); flush(); }
 
     /* --- stage 1: the machine-translation draft --- */
@@ -643,15 +649,17 @@
       for (const raw of list) {
         const text = String(raw || '').trim(); if (!text) continue;
         const key = cacheKey('l', src, tgt, text);
-        if (tcache[key] || soft.has(key) || inflight.has(key) || todo.some(x => x.key === key)) continue;
-        todo.push({ key, text });
+        const have = tcache[key];
+        if (opts.upgrade ? (have && have.refined) : (have || soft.has(key))) continue;
+        if (inflight.has(key) || todo.some(x => x.key === key)) continue;
+        todo.push({ key, text, kept: opts.upgrade && have ? { text: have.t } : null });
         if (todo.length >= max) break;
       }
       if (!todo.length) return Promise.resolve();
       todo.forEach(x => { x.d = {}; x.d.promise = new Promise((res, rej) => { x.d.resolve = res; x.d.reject = rej; }); x.d.promise.catch(() => {}); inflight.set(x.key, x.d.promise); });
       return (async () => {
         try {
-          for (const x of todo) x.draft = await mtDraft(x.text, src, tgt);
+          for (const x of todo) x.draft = x.kept || await mtDraft(x.text, src, tgt);
           let results = new Array(todo.length).fill(null);
           if (useAI) { try { results = await refineBatch(todo, src, tgt); } catch (e) { if (opts.onError) opts.onError(e); /* fall back to drafts */ } }
           todo.forEach((x, i) => {
@@ -749,7 +757,10 @@
       state: () => S, save, setOption, lang, langInfo,
       addAccount, updateAccount, removeAccount, moveAccount, refreshModels, testAccount,
       listSlots, setActive, active: resolveActive, describe, localReady, aiAvailable, usable, pick, isLocalSlot: s => !!s && s.accountId === 'local',
-      chat, log: logApi, translateLine, prefetch, prepareWords, lookupWord, tutorSystem, clearCache, flush,
+      chat, log: logApi, translateLine, prefetch, prepareWords,
+      /* put saved translations back into the working cache (a film that was prepared earlier) */
+      seed: list => { (list || []).forEach(o => { if (o && o.text && o.entry) tcache[cacheKey('l', S.lang.learn, S.lang.native, String(o.text).trim())] = o.entry; }); flush(); },
+      seedWords: list => { (list || []).forEach(o => { if (o && o.w && o.s && o.entry) tcache[cacheKey('w', S.lang.learn, S.lang.native, String(o.w).trim(), String(o.s).trim())] = o.entry; }); flush(); }, lookupWord, tutorSystem, clearCache, flush,
       cachedWord: (word, sentence, o) => { o = o || {}; return tcache[cacheKey('w', o.src || S.lang.learn, o.tgt || S.lang.native, String(word || '').trim(), String(sentence || '').trim())] || null; },
       cached: (text, o) => { o = o || {}; return tcache[cacheKey('l', o.src || S.lang.learn, o.tgt || S.lang.native, String(text || '').trim())] || null; }
     };
