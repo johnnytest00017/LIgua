@@ -138,6 +138,9 @@
     let total = 0;
     try {
       if (fs.addListener) handle = await fs.addListener('progress', p => { if (p && p.url === url) { total = p.contentLength || total; onBytes(p.bytes || 0, total); } });
+      /* The plugin does not create the folder for a download on Android (the file then fails with ENOENT), so make it first. */
+      const dir = part.split('/').slice(0, -1).join('/');
+      if (dir && fs.mkdir) { try { await fs.mkdir({ path: dir, directory: 'DATA', recursive: true }); } catch (e) { if (!/exist/i.test(String(e && e.message || e))) throw e; } }
       await fs.downloadFile({ url, path: part, directory: 'DATA', recursive: true, progress: true });
       const st = await fs.stat({ path: part, directory: 'DATA' });
       if (!st || !(st.size > 0)) throw new Error('the download was empty');

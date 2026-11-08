@@ -9,10 +9,13 @@ function fakeEnv(over) {
   const mem = {};
   const listeners = [];
   const downloads = [];
+  const dirs = new Set();
   const Filesystem = {
+    mkdir: async ({ path }) => { dirs.add(path); },
     addListener: async (ev, fn) => { listeners.push(fn); return { remove: () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); } }; },
     downloadFile: async ({ url, path }) => {
       downloads.push({ url, path });
+      if (!dirs.has(path.split('/').slice(0, -1).join('/'))) throw new Error('open failed: ENOENT (No such file or directory)');   // like the real Android plugin
       if (over && over.fail && over.fail(url)) throw new Error(over.fail(url));
       const size = (over && over.sizeOf && over.sizeOf(url)) || 1000;
       listeners.forEach(l => { l({ url, bytes: size / 2, contentLength: size }); l({ url, bytes: size, contentLength: size }); });
