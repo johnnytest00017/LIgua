@@ -32,7 +32,13 @@ jobs:
         run: bash scripts/patch-android.sh
       - name: Install the on-phone AI engine
         run: node scripts/patch-llm.mjs
-      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+      - name: Build the APK (longer download timeout, retries on network errors)
+        run: |
+          chmod +x android/gradlew
+          sed -i 's/networkTimeout=.*/networkTimeout=180000/' android/gradle/wrapper/gradle-wrapper.properties
+          cd android
+          for i in 1 2 3; do ./gradlew assembleDebug && exit 0; echo "build attempt $i failed, retrying"; sleep 30; done
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: safina-debug-apk
