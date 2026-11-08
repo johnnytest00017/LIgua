@@ -128,7 +128,7 @@
           const words = wantWords() && on ? planWords(cues) : [], wt = words.length;
           let ld = lines.filter(t => lineDone(t, on)).length, wd = words.filter(x => SAI.cachedWord(x.w, x.s)).length;
           emit(job, { state: 'running', phase: 'lines', ld, lt, wd, wt, done: ld + wd, total: lt + wt, err: '' });
-          const bsize = deps.batch || (SAI.state && SAI.state().mtMode === 'local' ? 6 : 10);
+          const bsize = deps.batch || (SAI.state && SAI.state().mtMode === 'local' ? 3 : 10);
           const need = lines.filter(t => !lineDone(t, on));
           let empty = 0, failed = false;
           const pass = async list => {
@@ -201,6 +201,9 @@
   });
   window.SAFINA_FILM = MGR;
   const bgOn = () => lsGet('safina.film.bg', '1') !== '0';
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+  const lsDel = k => { try { localStorage.removeItem(k); } catch (_) {} };
+  if (lsGet('safina.film.busy', '')) { lsSet('safina.film.bg', '0'); lsDel('safina.film.busy'); lsSet('safina.film.crashed', '1'); }
 
   /* ---- progress per library card ---- */
   const recs = new Map();          // videoId -> { tile, key, state, done, total, err }
@@ -279,7 +282,9 @@
         try {
           const cues = await cuesFor(q.rec, q.getFile); if (!cues) { r.state = 'partial'; r.err = 'No Arabic subtitles'; continue; }
           const key = MGR.key(cues); byKey.set(key, q.videoId);
+          lsSet('safina.film.busy', String(q.videoId));
           await MGR.ensure(cues, { title: q.tile });
+          lsDel('safina.film.busy');
         } catch (e) { r.state = 'error'; r.err = (e && e.message) || String(e); }
         soon();
         await new Promise(res => setTimeout(res, 300));
@@ -319,6 +324,6 @@
   }
   let tries = 0; const iv = setInterval(() => { if (hook() || ++tries > 40) clearInterval(iv); }, 250);
   window.addEventListener('safina-ai-changed', rescan);
-  setTimeout(rescan, 2500);
+  setTimeout(rescan, 8000);
   window.SAFINA_FILM_SCAN = rescan;
 })();

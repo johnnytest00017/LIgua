@@ -250,7 +250,7 @@
     if (llmLoaded && llmLoaded.id === rec.id) return rec;
     E.emit('status', 'Loading ' + rec.name + '…');
     const { uri } = await FS().getUri({ path: rel('llm', rec.id, rec.file), directory: 'DATA' });
-    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 2048 });
+    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 1280 });
     llmLoaded = { id: rec.id };
     E.emit('status', '');
     return rec;
