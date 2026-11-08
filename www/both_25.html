@@ -634,6 +634,9 @@ body.watch-lp{overflow:hidden}
 #watch#watch.lp #st{margin:0 14px 4px;font-size:10.5px;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #watch#watch.lp #st:empty,#watch#watch.lp #onnxStatus:empty{display:none}
 #watch#watch.lp #onnxStatus{margin:0 14px 4px;flex:0 0 auto}
+#watch #st,#watch #onnxStatus{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#watch #onnxStatus{height:16px;min-height:16px}
+#watch#watch.lp #onnxStatus:empty{display:block}
 #watch#watch.lp #cinema{flex:1 1 auto;min-height:0;width:100%;height:auto!important;max-height:none;aspect-ratio:auto;border-radius:0;box-shadow:none;background:#07080b;margin:0}
 #watch#watch.lp #cinema:not(.loaded)::before{bottom:auto;height:var(--vhh)}
 /* 1 - video */
@@ -1153,6 +1156,7 @@ function noteFor(r){
 }
 /* translate the next lines in one request, only when the lines already ready are running low */
 function prefetchAhead(i){
+  if(window.SAFINA_PREP_BUSY)return;
   try{
     let ready=0;
     for(let k=i+1;k<=i+4&&k<AR.length;k++){if(findEn(AR[k]).trim()||SAI.cached(AR[k].t))ready++;else break}
@@ -1163,6 +1167,7 @@ function prefetchAhead(i){
   }catch(e){}
 }
 async function translateMissingSubtitle(i){
+  if(window.SAFINA_PREP_BUSY)return '';
   if(i<0||!AR[i])return '';
   const cue=AR[i],arabic=String(cue.t||'').trim();
   if(!arabic||findEn(cue).trim())return '';
@@ -1235,9 +1240,10 @@ function tick(){
     if($('ap').checked&&!v.paused&&cur>=0&&t>=AR[cur].e-0.05&&pausedFor!==cur){pausedFor=cur;v.pause()}
     if(v.paused===false&&cur!==pausedFor)pausedFor=-1;
   }
+  const __n=performance.now();if(__n-(tick.__l||0)>120){tick.__l=__n;
   if(v.duration&&!seeking)$('seek').value=v.currentTime/v.duration*1000;
   $('seek').style.setProperty('--p',(v.duration?v.currentTime/v.duration*100:0)+'%');$('seek').style.setProperty('--pf',v.duration?Math.min(1,v.currentTime/v.duration):0);
-  $('tc').textContent=fmt(v.currentTime);$('td').textContent=fmt(v.duration||0);
+  $('tc').textContent=fmt(v.currentTime);$('td').textContent=fmt(v.duration||0)}
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -1461,7 +1467,7 @@ $('fSrt').onchange=async e=>{
     }catch(err){msg.push(f.name+': '+err.message)}
   }
   cur=-1;pausedFor=-1;subtitleTranslationCache.clear();show(AR.length?idxAt(v.currentTime):-1);pstatus();
-  toast(msg.join(' · '));e.target.value=''};
+  toast(msg.join(' · '));e.target.value='';setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)};
 
 pstatus();
 
@@ -1476,7 +1482,8 @@ function playLoaded(o){
   v.src=o.video;C.classList.add("loaded");
   curTitle=o.title+(o.sub?" \u00B7 "+o.sub:"");
   pstatus();nav("watch");
-  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.")}
+  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");
+  else setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)}
  catch(e){toast("Could not start playback: "+e.message)}}
 // player: show a random frame of the video (not a blank screen) until playback starts
 v.addEventListener("loadstart",()=>{v.removeAttribute("poster")});
@@ -1968,6 +1975,7 @@ render();
 <script src="safina-ai-ui.js"></script>
 <script src="safina-brain-ui.js"></script>
 <script src="safina-learn-ui.js"></script>
+<script src="safina-prep-ui.js"></script>
 <script src="safina-library.js"></script>
 <script>
 /* swipe left/right to move Library ⇄ Socials ⇄ Cards ⇄ Profile */

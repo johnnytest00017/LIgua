@@ -70,3 +70,13 @@ test('the build signs with the committed key, so updates install over the old ap
   assert.ok(__ex(new URL('../signing/debug.keystore', import.meta.url)));
   assert.match(__rf(new URL('../.github/workflows/android.yml', import.meta.url), 'utf8'), /signing\/debug\.keystore/);
 });
+
+test('the page prepares subtitles before playing and keeps the layout still', () => {
+  const page = read('www/both_25.html');
+  assert.ok(exists('www/safina-prep-ui.js'));
+  assert.match(page, /safina-prep-ui\.js/);
+  assert.match(page, /SAFINA_PREP\.offer\(\)/);
+  assert.match(page, /if\(window\.SAFINA_PREP_BUSY\)return/);                 // no on-demand translating while preparing
+  assert.match(page, /#watch #onnxStatus\{height:16px/);                       // the status line no longer pushes the video around
+  assert.match(page, /tick\.__l/);                                              // time bar updates are throttled
+});

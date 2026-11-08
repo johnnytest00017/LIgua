@@ -435,3 +435,18 @@ test('AI log: bounded, oldest entries dropped first', async () => {
   for (let i = 0; i < 9; i++) await ai.chat({ messages: [{ r: 'me', t: 'q' + i }] });
   const l = ai.log.list(); assert.equal(l.length, 5); assert.match(l[0].prompt, /q4/); assert.match(l[4].prompt, /q8/);
 });
+
+test('prefetch with persist keeps drafts across a restart; prepareWords makes later taps instant', async () => {
+  const mem = {}; const store = { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); } };
+  const mt = { translate: async t => 'draft:' + t };
+  const calls = [];
+  const { ai } = make(req => { calls.push(req); const b = JSON.parse(req.body || req.data || '{}'); const txt = JSON.stringify(b); if (/Words from a/.test(txt)) return openaiReply(JSON.stringify([{ i: 0, gloss: 'school', lemma: 'مدرسة', pos: 'noun' }, { i: 1, gloss: 'go', lemma: 'ذهب', pos: 'verb' }])); return openaiReply('{}'); }, { store, mt: mt });
+  ai.addAccount({ provider: 'openai', key: 'k' }); ai.setOption('refine', true);
+  const r = await ai.prepareWords([{ w: 'المدرسة', s: 'أذهب إلى المدرسة' }, { w: 'أذهب', s: 'أذهب إلى المدرسة' }]);
+  assert.equal(r.done, 2); assert.equal(r.total, 2);
+  const n = calls.length;
+  const g = await ai.lookupWord('المدرسة', 'أذهب إلى المدرسة');
+  assert.equal(g.gloss, 'school'); assert.equal(calls.length, n, 'a tap after preparing must not call the AI again');
+  assert.equal((await ai.prepareWords([{ w: 'المدرسة', s: 'أذهب إلى المدرسة' }])).total, 0);
+  const none = make(() => rate()).ai; assert.match((await none.prepareWords([{ w: 'x', s: 'y z' }])).error, /AI/);
+});

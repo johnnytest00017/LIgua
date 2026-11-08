@@ -294,6 +294,20 @@ $("soc").onclick=e=>{const a=e.target.closest("[data-a]");if(!a)return;const[k,v
 rep('<script src="safina-boot.js"></script>', '<script src="safina-brain.js"></script>\n<script src="safina-boot.js"></script>')
 rep('<script src="safina-ai-ui.js"></script>', '<script src="safina-ai-ui.js"></script>\n<script src="safina-brain-ui.js"></script>')
 rep('<script src="safina-brain-ui.js"></script>', '<script src="safina-brain-ui.js"></script>\n<script src="safina-learn-ui.js"></script>')
+# 12. Smooth playback: translate everything first (with progress), keep the layout still, do less work per frame
+rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-prep-ui.js"></script>')
+rep('  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.")}\n catch(e){toast("Could not start playback: "+e.message)}}',
+    '  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");\n  else setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)}\n catch(e){toast("Could not start playback: "+e.message)}}')
+rep("  toast(msg.join(' · '));e.target.value=''};",
+    "  toast(msg.join(' · '));e.target.value='';setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){}},80)};")
+rep("async function translateMissingSubtitle(i){\n  if(i<0||!AR[i])return '';","async function translateMissingSubtitle(i){\n  if(window.SAFINA_PREP_BUSY)return '';\n  if(i<0||!AR[i])return '';")
+rep("function prefetchAhead(i){\n  try{","function prefetchAhead(i){\n  if(window.SAFINA_PREP_BUSY)return;\n  try{")
+# the two status lines above the video appeared and vanished (display:none when empty), which pushed the video up and down
+rep('#watch#watch.lp #onnxStatus{margin:0 14px 4px;flex:0 0 auto}',
+    '#watch#watch.lp #onnxStatus{margin:0 14px 4px;flex:0 0 auto}\n#watch #st,#watch #onnxStatus{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}\n#watch #onnxStatus{height:16px;min-height:16px}\n#watch#watch.lp #onnxStatus:empty{display:block}')
+# the time bar and clock were rewritten on every frame; about 8 times a second is enough to look smooth
+rep("  if(v.duration&&!seeking)$('seek').value=v.currentTime/v.duration*1000;\n  $('seek').style.setProperty('--p',(v.duration?v.currentTime/v.duration*100:0)+'%');$('seek').style.setProperty('--pf',v.duration?Math.min(1,v.currentTime/v.duration):0);\n  $('tc').textContent=fmt(v.currentTime);$('td').textContent=fmt(v.duration||0);\n  requestAnimationFrame(tick);",
+    "  const __n=performance.now();if(__n-(tick.__l||0)>120){tick.__l=__n;\n  if(v.duration&&!seeking)$('seek').value=v.currentTime/v.duration*1000;\n  $('seek').style.setProperty('--p',(v.duration?v.currentTime/v.duration*100:0)+'%');$('seek').style.setProperty('--pf',v.duration?Math.min(1,v.currentTime/v.duration):0);\n  $('tc').textContent=fmt(v.currentTime);$('td').textContent=fmt(v.duration||0)}\n  requestAnimationFrame(tick);")
 # video behaviour: pauses (count and length), skips and rewinds, and watch time
 rep("if(!v.paused&&!v.ended&&$(\"watch\").classList.contains(\"show\"))day().sec+=dt;",
     "if(!v.paused&&!v.ended&&$(\"watch\").classList.contains(\"show\")){day().sec+=dt;try{BRAIN.track('watch',dt)}catch(e){}};")

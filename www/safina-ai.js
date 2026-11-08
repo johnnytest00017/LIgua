@@ -653,16 +653,54 @@
         try {
           for (const x of todo) x.draft = await mtDraft(x.text, src, tgt);
           let results = new Array(todo.length).fill(null);
-          if (useAI) { try { results = await refineBatch(todo, src, tgt); } catch (_) { /* fall back to drafts */ } }
+          if (useAI) { try { results = await refineBatch(todo, src, tgt); } catch (e) { if (opts.onError) opts.onError(e); /* fall back to drafts */ } }
           todo.forEach((x, i) => {
             const r = results[i];
             if (r) { cachePut(x.key, r); x.d.resolve(r); }
-            else if (x.draft) { const u = unrefined(x.draft); soft.set(x.key, u); x.d.resolve(u); }
+            else if (x.draft) { const u = unrefined(x.draft); soft.set(x.key, u); if (opts.persist) cachePut(x.key, u); x.d.resolve(u); }
             else x.d.reject(new AIError('none', 'No translation available'));
           });
-        } catch (e) { todo.forEach(x => x.d.reject(e)); }
+          if (todo.some(x => !results[todo.indexOf(x)] && !x.draft) && opts.onError) opts.onError(new AIError('none', 'No translator or AI is ready. Set one up in AI & downloads.'));
+        } catch (e) { if (opts.onError) opts.onError(e); todo.forEach(x => x.d.reject(e)); }
         finally { todo.forEach(x => { if (inflight.get(x.key) === x.d.promise) inflight.delete(x.key); }); }
       })();
+    }
+
+    /* Meaning of many words at once, each in the line it appears in, saved under the same key a tap uses, so a tap is instant later.
+     * items: [{w, s}] (word, its line). Uses the AI (powerful first, on-phone as fallback). Returns {done, total, error}. */
+    async function prepareWords(items, opts) {
+      opts = opts || {};
+      const src = opts.src || S.lang.learn, tgt = opts.tgt || S.lang.native;
+      const todo = [], seen = new Set();
+      for (const it of items || []) {
+        const w = String(it.w || '').trim(), s = String(it.s || '').trim(); if (!w) continue;
+        const key = cacheKey('w', src, tgt, w, s);
+        if (tcache[key] || seen.has(key)) continue; seen.add(key); todo.push({ w, s, key });
+      }
+      const res = { done: 0, total: todo.length, error: '' };
+      if (!todo.length) return res;
+      if (!(S.refine && aiAvailable())) { res.error = 'Word meanings need an AI. Add an account or download the on-phone AI.'; return res; }
+      const small = (sl => !!sl && sl.accountId === 'local')(pick('heavy')), size = opts.batch || (small ? 6 : 30);
+      for (let at = 0; at < todo.length; at += size) {
+        if (opts.signal && opts.signal.aborted) break;
+        const part = todo.slice(at, at + size);
+        const user = 'Words from a ' + langInfo(src).name + ' video, each with the line it appears in:\n' + part.map((x, i) => i + '. ' + x.w + '  |  ' + x.s.slice(0, 160)).join('\n') +
+          '\n\nReturn ONLY a JSON array with one object per word, same "i": {"i": number, "gloss": the meaning of THIS word as used in its line, 1 to 5 words in ' + langInfo(tgt).name + ' (for a verb the infinitive of its meaning), ' +
+          (wantDia(src) ? '"diacritized": the word with full ' + LANGS[src].diac + ' as pronounced there, ' : '') + '"lemma": its dictionary form, "pos": part of speech}.';
+        try {
+          const r = await chat({ system: sysFor(src, tgt), messages: [{ r: 'me', t: user }], tier: 'heavy', quiet: true, purpose: 'prepare-words', signal: opts.signal });
+          const arr = parseLooseJSON(r.text);
+          if (!Array.isArray(arr)) throw new AIError('bad', 'The AI did not return a list of word meanings.');
+          arr.forEach(o => {
+            const x = part[+(o && o.i)]; if (!x || !cleanLine(o.gloss)) return;
+            cachePut(x.key, { gloss: cleanLine(o.gloss), lemma: cleanLine(o.lemma) || x.w, d: wantDia(src) ? alignDiacritics(x.w, cleanLine(o.diacritized), src) : '', pos: String(o.pos || ''), root: '', note: '', refined: true, via: r.via });
+            res.done++;
+          });
+        } catch (e) { res.error = e && e.message || String(e); if (e && (e.kind === 'limit' || e.kind === 'none' || e.final)) break; }
+        if (opts.onProgress) opts.onProgress(res.done, res.total);
+      }
+      flush();
+      return res;
     }
 
     /* One word, in the sentence it was tapped in: meaning in context + diacritics + part of speech. */
@@ -711,7 +749,8 @@
       state: () => S, save, setOption, lang, langInfo,
       addAccount, updateAccount, removeAccount, moveAccount, refreshModels, testAccount,
       listSlots, setActive, active: resolveActive, describe, localReady, aiAvailable, usable, pick, isLocalSlot: s => !!s && s.accountId === 'local',
-      chat, log: logApi, translateLine, prefetch, lookupWord, tutorSystem, clearCache, flush,
+      chat, log: logApi, translateLine, prefetch, prepareWords, lookupWord, tutorSystem, clearCache, flush,
+      cachedWord: (word, sentence, o) => { o = o || {}; return tcache[cacheKey('w', o.src || S.lang.learn, o.tgt || S.lang.native, String(word || '').trim(), String(sentence || '').trim())] || null; },
       cached: (text, o) => { o = o || {}; return tcache[cacheKey('l', o.src || S.lang.learn, o.tgt || S.lang.native, String(text || '').trim())] || null; }
     };
   }
