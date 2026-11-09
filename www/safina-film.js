@@ -96,7 +96,7 @@
     /* how much is still to do for this film */
     async function need(cues) {
       const key = filmKey(cues); await restore(key);
-      const on = aiOn(), lines = planLines(cues), words = wantWords() && on ? planWords(cues) : [];
+      const on = aiOn(), lines = planLines(cues), words = wantWords() ? planWords(cues) : [];
       return { key, lines: lines.filter(t => !lineDone(t, on)).length, words: words.filter(x => !SAI.cachedWord(x.w, x.s)).length, totalLines: lines.length, totalWords: words.length };
     }
 
@@ -110,7 +110,7 @@
       const words = [];
       for (const x of planWords(cues)) { const e = SAI.cachedWord(x.w, x.s); if (e && !seen.has(x.w)) { seen.add(x.w); words.push({ w: x.w, s: x.s, g: e.gloss, l: e.lemma, p: e.pos, d: e.d || '' }); } }
       const translated = lines.filter(l => l.tr).length, refined = lines.filter(l => l.r).length;
-      return { key, title: title || '', at: now(), total: lines.length, translated, refined, words, lines, state: translated === lines.length ? (refined === lines.length || !aiOn() ? 'done' : 'draft') : 'partial', srt: toSrt(lines) };
+      return { key, title: title || '', at: now(), total: lines.length, wordsTotal: wantWords() ? planWords(cues).length : 0, translated, refined, words, lines, state: translated === lines.length ? (refined === lines.length || !aiOn() ? 'done' : 'draft') : 'partial', srt: toSrt(lines) };
     }
 
     /* the whole pipeline for one film; joins a job that is already running for the same film */
@@ -127,7 +127,7 @@
         try {
           await restore(key);
           const on = aiOn(), lines = planLines(cues), lt = lines.length;
-          const words = wantWords() && on ? planWords(cues) : [], wt = words.length;
+          const words = wantWords() ? planWords(cues) : [], wt = words.length;
           let ld = lines.filter(t => lineDone(t, on)).length, wd = words.filter(x => SAI.cachedWord(x.w, x.s)).length;
           emit(job, { state: 'running', phase: 'lines', ld, lt, wd, wt, done: ld + wd, total: lt + wt, err: '' });
           const bsize = deps.batch || (SAI.state && SAI.state().mtMode === 'local' ? 6 : 10);
@@ -153,7 +153,8 @@
             failed = !sig.aborted && ld < lt && empty >= 2;
           }
           if (failed && !lines.some(t => SAI.cached(t))) throw new Error(err || 'Nothing could be translated.');
-          if (!sig.aborted && words.length && !failed) {
+          if (!on && words.length && !sig.aborted && !err) err = 'Word meanings need an AI (add an account or download the on-phone AI in AI & downloads).';
+          if (!sig.aborted && words.length && !failed && on) {
             emit(job, { phase: 'words' });
             const r = await SAI.prepareWords(words, { signal: sig, onProgress: () => { wd = words.filter(x => SAI.cachedWord(x.w, x.s)).length; emit(job, { wd, done: ld + wd }); } });
             wd = words.filter(x => SAI.cachedWord(x.w, x.s)).length;
@@ -163,8 +164,8 @@
           try { SAI.flush(); } catch (_) { /* ignore */ }
           const rec = build(cues, job.title, key);
           if (rec.translated) await db.put('films', rec);
-          const missing = lt - ld;
-          emit(job, { phase: 'done', state: sig.aborted ? 'stopped' : (missing > 0 ? 'partial' : rec.state), ld, wd, done: ld + wd, err: missing > 0 && !sig.aborted ? (err || missing + ' lines could not be translated') : err, saved: rec.translated });
+          const missing = lt - ld, wmiss = wt - wd;
+          emit(job, { phase: 'done', state: sig.aborted ? 'stopped' : (missing > 0 || wmiss > 0 ? 'partial' : rec.state), ld, wd, done: ld + wd, err: !sig.aborted && (missing > 0 || wmiss > 0) ? (err || (missing > 0 ? missing + ' lines' : wmiss + ' word meanings') + ' could not be done') : err, saved: rec.translated });
           return rec;
         } catch (e) {
           emit(job, { state: 'error', phase: 'done', err: (e && e.message) || String(e) });
@@ -205,43 +206,69 @@
   const bgOn = () => lsGet('safina.film.bg', '1') !== '0';
 
   /* ---- progress per library card ---- */
+  const qItems = new Map();        // videoId -> what is needed to run it again
   const recs = new Map();          // videoId -> { tile, key, state, done, total, err }
   const byKey = new Map();         // film key -> videoId
   function tileState(title) {
-    let done = 0, total = 0, n = 0, run = 0, queued = 0, err = '', fin = 0, draft = 0;
-    recs.forEach(r => { if (r.tile !== title) return; n++; done += r.done; total += r.total; if (r.state === 'running') run++; else if (r.state === 'queued') queued++; else if (r.state === 'error' || r.state === 'partial') err = r.err || 'paused'; else if (r.state === 'draft') { fin++; draft++; } else fin++; });
+    let done = 0, total = 0, n = 0, run = 0, queued = 0, err = '', fin = 0, draft = 0, ld = 0, lt = 0, wd = 0, wt = 0;
+    recs.forEach(r => { if (r.tile !== title) return; n++; done += r.done; total += r.total; ld += r.ld || 0; lt += r.lt || 0; wd += r.wd || 0; wt += r.wt || 0;
+      if (r.state === 'running') run++; else if (r.state === 'queued') queued++; else if (r.state === 'error' || r.state === 'partial') err = r.err || 'paused'; else if (r.state === 'draft') { fin++; draft++; } else fin++; });
     if (!n) return null;
-    return { pct: total ? Math.min(100, Math.floor(done / total * 100)) : 0, running: run > 0, queued: queued > 0, err, done: fin === n && !err, draft: draft > 0, n };
+    return { pct: total ? Math.min(100, Math.floor(done / total * 100)) : 0, running: run > 0, queued: queued > 0, err, done: fin === n && !err, draft: draft > 0, n, ld, lt, wd, wt };
   }
+  const T = () => window.SAFINA_TRACE;
+  /* why nothing can happen right now, in plain words */
+  function blocker() {
+    try {
+      if (T() && T().guarded('mt') && T().guarded('llm')) return 'The on-phone translator and AI are switched off after a crash. Turn them on in AI & downloads.';
+      if (T() && T().guarded('llm') && !SAI.aiAvailable()) return 'The on-phone AI is switched off after a crash. Turn it on in AI & downloads.';
+      if (!SAI.aiAvailable()) return 'No AI is set up yet, so word meanings cannot be made. Add an account or download the on-phone AI in AI & downloads.';
+    } catch (_) { /* unknown */ }
+    return '';
+  }
+  const num = n => String(n).replace(/\B(?=(\d{3})+$)/g, ',');
   function decorate() {
     const root = document.getElementById('rows'); if (!root) return;
     root.querySelectorAll('.pc').forEach(c => {
       const t = c.querySelector('.pt'), poster = c.querySelector('.poster'); if (!t || !poster) return;
-      const s = tileState(t.textContent);
-      let bar = poster.querySelector('.fp'), lab = poster.querySelector('.fpl');
-      if (!s || (s.done && !s.draft)) {
-        if (s && s.done) { if (!lab) { lab = document.createElement('span'); lab.className = 'fpl ok'; poster.appendChild(lab); } lab.textContent = '✓ Translated'; lab.className = 'fpl ok'; }
-        else if (lab) lab.remove();
-        if (bar) bar.remove(); return;
-      }
-      if (!bar) { bar = document.createElement('div'); bar.className = 'fp'; bar.innerHTML = '<i></i>'; poster.appendChild(bar); }
-      if (!lab) { lab = document.createElement('span'); lab.className = 'fpl'; poster.appendChild(lab); }
-      bar.firstChild.style.width = s.pct + '%';
-      lab.className = 'fpl' + (s.err ? ' warn' : '');
-      lab.textContent = s.err ? '⚠ Paused · ' + s.pct + '%' : s.running ? 'Translating ' + s.pct + '%' : s.queued ? 'Waiting · ' + s.pct + '%' : s.draft ? 'Draft ' + s.pct + '%' : s.pct + '%';
-      if (s.err) lab.title = s.err;
+      poster.querySelectorAll('.fp,.fpl').forEach(x => x.remove());          // older versions drew on the picture
+      const s = tileState(t.textContent); let fs = c.querySelector('.fs');
+      if (!s) { if (fs) fs.remove(); return; }
+      if (!fs) { fs = document.createElement('div'); fs.className = 'fs'; fs.innerHTML = '<div class="fb"><i></i></div><div class="ft1"></div><div class="ft2"></div>'; poster.after(fs); }
+      const full = s.done && !s.draft;
+      const why = !full && !s.running ? blocker() : '';
+      fs.className = 'fs' + (full ? ' ok' : s.err || why ? ' warn' : '');
+      fs.dataset.tile = t.textContent;
+      fs.querySelector('.fb i').style.width = (full ? 100 : s.pct) + '%';
+      const counts = s.lt ? 'Lines ' + num(s.ld) + '/' + num(s.lt) + (s.wt ? ' · Words ' + num(s.wd) + '/' + num(s.wt) : '') : '';
+      fs.querySelector('.ft1').textContent = full ? '✓ Translated and saved' + (s.wt ? ' · words too' : '') : s.running ? 'Translating ' + s.pct + '%' : s.queued ? 'Waiting · ' + s.pct + '%' : s.err ? '⚠ ' + s.pct + '% · tap to retry' : s.draft ? 'Draft saved · tap to finish with AI' : s.pct + '% · tap to translate';
+      fs.querySelector('.ft2').textContent = (full ? '' : counts) + (why ? (counts && !full ? '\n' : '') + why : s.err && !s.running ? (counts ? '\n' : '') + s.err : '');
     });
   }
   let dec = null; const soon = () => { if (dec) return; dec = setTimeout(() => { dec = null; try { decorate(); } catch (_) { /* ignore */ } }, 150); };
   MGR.onProgress((key, p) => {
     const id = byKey.get(key), r = id && recs.get(id); if (!r) return;
-    r.done = p.done; r.total = p.total || r.total; r.state = p.state === 'running' ? 'running' : p.state === 'stopped' ? 'partial' : p.state; r.err = p.err || '';
+    r.done = p.done; r.total = p.total || r.total; r.ld = p.ld; r.lt = p.lt; r.wd = p.wd; r.wt = p.wt;
+    r.state = p.state === 'running' ? 'running' : p.state === 'stopped' ? 'partial' : p.state; r.err = p.err || '';
     soon();
   });
   const css = document.createElement('style');
-  css.textContent = '.pc .poster{position:relative;overflow:hidden}.pc .poster .fp{position:absolute;left:0;right:0;bottom:0;height:6px;background:rgba(0,0,0,.55);z-index:3}.pc .poster .fp i{display:block;height:100%;width:0;background:#ff293b;transition:width .25s}' +
-    '.pc .poster .fpl{position:absolute;left:8px;bottom:12px;z-index:3;font:600 10.5px system-ui,sans-serif;padding:3px 8px;border-radius:99px;background:rgba(0,0,0,.72);color:#fff}.pc .poster .fpl.ok{color:#6fe3a0}.pc .poster .fpl.warn{color:#ffb86b}';
+  css.textContent = '.pc .fs{margin:8px 2px 0;padding:8px 10px;border-radius:12px;background:var(--card,#16161a);border:1px solid var(--ln,#2c2c34);font:600 11.5px/1.35 system-ui,sans-serif;color:var(--tx,#fff);cursor:pointer}' +
+    '.pc .fs .fb{height:6px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}.pc .fs .fb i{display:block;height:100%;width:0;background:var(--ac,#ff293b);border-radius:99px;transition:width .25s}' +
+    '.pc .fs .ft1{margin-top:6px}.pc .fs .ft2{opacity:.7;font-weight:500;white-space:pre-line;font-size:10.5px}.pc .fs .ft2:empty{display:none}' +
+    '.pc .fs.ok .fb i{background:#2fb86b}.pc .fs.ok .ft1{color:#6fe3a0}.pc .fs.warn .ft1{color:#ffb86b}.pc .fs.warn .fb i{background:#ffb86b}';
   document.head.appendChild(css);
+  /* tapping the status starts (or restarts) that film right now, without opening the film */
+  document.addEventListener('click', e => {
+    const fs = e.target.closest && e.target.closest('.pc .fs'); if (!fs) return;
+    e.stopPropagation(); e.preventDefault();
+    const tile = fs.dataset.tile, s = tileState(tile); if (!s || s.running) return;
+    const why = blocker();
+    if (why && /AI/.test(why) && !SAI.aiAvailable()) { try { window.SafinaUI.open(); } catch (_) { /* no settings */ } return; }
+    try { localStorage.setItem('safina.film.bg', '1'); } catch (_) { /* ignore */ }
+    recs.forEach((r, id) => { if (r.tile !== tile || r.state === 'running') return; const q = qItems.get(id); if (!q) return; if (!r.state || r.state === 'done') return; r.state = 'queued'; r.err = ''; if (!queue.some(x => x.videoId === id)) queue.unshift(q); });
+    userKick = true; soon(); work();
+  }, true);
 
   /* ---- read the library's own database (read only; never creates it) ---- */
   async function libItems() {
@@ -262,7 +289,7 @@
   }
   const tileTitle = (it, m) => (it.type === 'tv' ? it.title : (it.movies.length > 1 ? ((window.SafinaMatch && window.SafinaMatch.parseName(m.videoName).series) || m.videoName) : it.title));
 
-  const queue = []; let working = false, scanning = false;
+  const queue = []; let working = false, scanning = false, userKick = false;
   async function cuesFor(rec, getFile) {
     for (const s of rec.subs || []) {
       if (s.lang && s.lang !== 'ar') continue;
@@ -275,6 +302,7 @@
   async function work() {
     if (working) return; working = true;
     try {
+      const wait = 15000 - (Date.now() - bootAt); if (wait > 0 && !userKick) await new Promise(res => setTimeout(res, wait));   // nothing heavy in the first seconds
       while (queue.length) {
         const q = queue.shift(); const r = recs.get(q.videoId); if (!r) continue;
         if (!bgOn()) { r.state = 'partial'; r.err = 'Background preparation is off'; soon(); continue; }
@@ -301,10 +329,12 @@
           if (!m) { cues = await cuesFor(rec, getFile); if (!cues) continue; m = { videoId: rec.videoId, key: MGR.key(cues), total: MGR.planLines(cues).length }; await MGR.mapPut(m); }
           byKey.set(m.key, rec.videoId);
           const film = await MGR.get(m.key);
-          const complete = film && (film.state === 'done' || (film.state === 'draft' && !on));
+          const wantW = lsGet('safina.prep.words', '1') !== '0', wordsOk = !wantW || (film && (film.wordsTotal == null ? (film.words || []).length > 0 : (film.words || []).length >= film.wordsTotal * 0.97));
+          const complete = film && wordsOk && (film.state === 'done' || (film.state === 'draft' && !on && !wantW));
           const prev = recs.get(rec.videoId);
           if (prev && (prev.state === 'running' || prev.state === 'queued')) continue;
-          recs.set(rec.videoId, { tile, key: m.key, state: complete ? (film.state === 'draft' ? 'draft' : 'done') : 'queued', done: film ? film.translated : 0, total: film ? film.total : m.total, err: '' });
+          recs.set(rec.videoId, { tile, key: m.key, state: complete ? (film.state === 'draft' ? 'draft' : 'done') : 'queued', done: film ? film.translated + (film.words || []).length : 0, total: film ? film.total + (film.wordsTotal || 0) : m.total, ld: film ? film.translated : 0, lt: film ? film.total : m.total, wd: film ? (film.words || []).length : 0, wt: film ? film.wordsTotal || 0 : 0, err: '' });
+          qItems.set(rec.videoId, { videoId: rec.videoId, rec, getFile, tile });
           if (!complete) queue.push({ videoId: rec.videoId, rec, getFile, tile });
         }
       }
@@ -312,7 +342,7 @@
   }
   /* nothing heavy in the first seconds after the app opens */
   const bootAt = Date.now();
-  let sc = null; const rescan = () => { clearTimeout(sc); sc = setTimeout(scan, Math.max(900, 15000 - (Date.now() - bootAt))); };
+  let sc = null; const rescan = () => { clearTimeout(sc); sc = setTimeout(scan, Math.max(900, 4000 - (Date.now() - bootAt))); };
 
   /* the library redraws its cards through lib(): add the bars after every redraw, and look for new films */
   function hook() {
@@ -323,6 +353,6 @@
   }
   let tries = 0; const iv = setInterval(() => { if (hook() || ++tries > 40) clearInterval(iv); }, 250);
   window.addEventListener('safina-ai-changed', rescan);
-  setTimeout(rescan, 15000);
+  setTimeout(rescan, 4000);
   window.SAFINA_FILM_SCAN = rescan;
 })();
