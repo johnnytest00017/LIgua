@@ -74,6 +74,9 @@ test('the build signs with the committed key, so updates install over the old ap
 test('the page prepares subtitles before playing and keeps the layout still', () => {
   const page = read('www/both_25.html');
   assert.ok(exists('www/safina-prep-ui.js'));
+  assert.ok(exists('www/safina-path.js'));
+  assert.ok(page.indexOf('safina-path.js') > page.indexOf('safina-learn-ui.js'));
+  assert.match(read('www/safina-learn-ui.js'), /SafinaPath/);
   assert.match(page, /safina-prep-ui\.js/);
   assert.match(page, /SAFINA_PREP\.offer\(\)/);
   assert.match(page, /if\(window\.SAFINA_PREP_BUSY\)return/);                 // no on-demand translating while preparing

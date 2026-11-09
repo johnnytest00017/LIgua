@@ -295,7 +295,7 @@ rep('<script src="safina-boot.js"></script>', '<script src="safina-brain.js"></s
 rep('<script src="safina-ai-ui.js"></script>', '<script src="safina-ai-ui.js"></script>\n<script src="safina-brain-ui.js"></script>')
 rep('<script src="safina-brain-ui.js"></script>', '<script src="safina-brain-ui.js"></script>\n<script src="safina-learn-ui.js"></script>')
 # 12. Smooth playback: translate everything first (with progress), keep the layout still, do less work per frame
-rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-film.js"></script>\n<script src="safina-prep-ui.js"></script>')
+rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-path.js"></script>\n<script src="safina-film.js"></script>\n<script src="safina-prep-ui.js"></script>')
 rep('  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.")}\n catch(e){toast("Could not start playback: "+e.message)}}',
     '  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");\n  else{window.SAFINA_PREP_BUSY=true;setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){window.SAFINA_PREP_BUSY=false}},80)}}\n catch(e){toast("Could not start playback: "+e.message)}}')
 rep("  toast(msg.join(' · '));e.target.value=''};",
@@ -340,6 +340,8 @@ rep('window.__lsnPick=()=>{lsnState.clear();const S=(window.__lsn||{}).S||[];ret
     'window.__lsnPick=()=>{lsnState.clear();const S=(window.__lsn||{}).S||[],rk=a=>BRAIN.rank(a.map(x=>(x.text=x.ar.join(" "),x)));return rk(S.filter(x=>x.due)).concat(rk(S.filter(x=>!x.due)))};   /* sentences with the most words you do not know yet come first */')
 rep('''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>whole line</div>":"")+"</td><td>"+v.tr+''',
     '''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>whole line</div>":"")+(v.auto?"<div class='mu' style='direction:ltr;text-align:left'>🧠 AI"+(v.lvl?" · "+esc(v.lvl):"")+(v.why?" · "+esc(v.why):"")+"</div>":"")+"</td><td>"+v.tr+''')
+
+rep('const xp=n*10+rv*2+mins,lv=', 'const xp=n*10+rv*2+mins+(window.SAFINA_XP?window.SAFINA_XP.total():0),lv=')
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('patched OK ->', dst, len(s), 'chars')

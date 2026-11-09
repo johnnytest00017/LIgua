@@ -100,7 +100,7 @@
   function rate(q) {
     const c = st.q[st.i]; if (!c) return;
     let out; try { out = B.rateCard(c.id, { q, ms: Date.now() - st.t0, tapped: Array.from(st.tapped) }); } catch (e) { toast(e.message); return; }
-    st.done.push({ q, ms: Date.now() - st.t0 });
+    st.done.push({ q, ms: Date.now() - st.t0 }); try { if (window.SAFINA_XP) window.SAFINA_XP.add(q ? 2 + q : 0); } catch (_) { /* no points */ }
     if (out.learned.length) toast('🎉 You now know: ' + out.learned.join(', '));
     st.i++; card();
   }
@@ -136,7 +136,7 @@
     const d = st.q[st.i]; if (!d) return;
     if (st.graded) { st.i++; return drill(); }
     const a = $('sl-a').value; if (!a.trim()) return;
-    st.graded = true; const g = B.conjGrade(d.id, a, Date.now() - st.t0); st.n++; if (g.ok) st.ok++;
+    st.graded = true; const g = B.conjGrade(d.id, a, Date.now() - st.t0); st.n++; if (g.ok) st.ok++; try { if (g.ok && window.SAFINA_XP) window.SAFINA_XP.add(3); } catch (_) { /* no points */ }
     $('sl-a').disabled = true;
     $('sl-f').innerHTML = g.ok ? '<div class="ok" style="margin-top:10px"><b>Correct</b>' + (g.marksDiffer ? ' · exact spelling: <span dir="auto">' + esc(g.answer) + '</span>' : '') + '</div>' + (d.note ? '<div class="mu">' + esc(d.note) + '</div>' : '')
       : '<div class="err" style="margin-top:10px"><b>Not quite.</b> Correct: <span dir="auto" style="font-size:18px">' + esc(g.answer) + '</span></div>' + (d.note ? '<div class="mu">' + esc(d.note) + '</div>' : '') + '<div id="sl-why" class="mu" style="margin-top:6px"><a data-sl="why" style="text-decoration:underline">Why?</a></div>';
@@ -235,7 +235,7 @@
   document.addEventListener('click', e => {
     const b = e.target.closest && e.target.closest('#cards [data-p="rev"]');
     if (!b || window.__slOldRev || !B.state().on) return;
-    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); open('practice');
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); if (window.SafinaPath) window.SafinaPath.open(); else open('practice');
   }, true);
   function paintDue() {
     const h = $('hdue'); if (!h || !B.state().on) return;
