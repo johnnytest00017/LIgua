@@ -31,9 +31,11 @@
 
   /* ------------------------------------------------------------------ top bar */
   const css = document.createElement('style');
-  css.textContent = 'header{display:flex;align-items:center;gap:10px}#sb{margin-left:auto;display:flex;align-items:center;gap:6px;font:700 14px "Plus Jakarta Sans",system-ui,sans-serif;color:var(--tx)}' +
-    '#sb button{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 9px;border-radius:999px;border:1px solid var(--ln,#2c2c34);background:var(--card,#16161a);color:inherit;font:inherit;cursor:pointer}#sb button:active{transform:scale(.96)}' +
-    '#sb .av{width:32px;padding:0;justify-content:center}#sb svg{width:17px;height:17px;flex:0 0 17px}#sb .fl{color:#ff9a1f}#sb .xp{color:var(--ac,#ff293b)}#sb .lgc{letter-spacing:.04em}' +
+  css.textContent = 'header{display:flex;align-items:center;gap:10px}#sb{margin-left:auto;position:relative;display:flex;align-items:center;gap:18px;font:800 19px "Plus Jakarta Sans",system-ui,sans-serif;color:var(--tx)}' +
+    '#sb button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:inherit;font:inherit;padding:2px;cursor:pointer}#sb button:active{transform:scale(.94)}' +
+    '#sb .lgb .fg{display:inline-flex;align-items:center;justify-content:center;width:40px;height:34px;border-radius:9px;background:var(--card,#16161a);border:1px solid var(--ln,#2c2c34);font-size:24px;line-height:1}#sb .ch{font-size:11px;opacity:.6;margin-left:-2px}' +
+    '#sb .stk{gap:4px}#sb-m{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:99989;min-width:210px;max-height:60vh;overflow:auto;background:var(--card,#16161a);border:1px solid var(--ln,#2c2c34);border-radius:16px;padding:6px;box-shadow:0 12px 34px rgba(0,0,0,.55)}#sb-m.on{display:block}' +
+    '#sb-m .mh{font:700 11px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;opacity:.55;padding:8px 10px 4px}#sb-m button{display:flex;width:100%;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;font:600 15px system-ui,sans-serif;text-align:left}#sb-m button.cur{background:rgba(255,41,59,.14)}#sb-m button b{margin-left:auto;color:var(--ac,#ff293b)}#sb-m .fg{font-size:22px}' +
     '#lp{position:fixed;inset:0;z-index:99991;background:var(--bg,#0b0b0c);color:var(--tx,#fff);display:none;flex-direction:column;font-family:"Plus Jakarta Sans",system-ui,sans-serif}#lp.on{display:flex}' +
     '#lp .top{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 8px}#lp .x{border:0;background:none;color:inherit;font-size:24px;padding:2px 8px;opacity:.7}' +
     '#lp .pb{flex:1;height:14px;border-radius:99px;background:var(--ln,#2c2c34);overflow:hidden}#lp .pb i{display:block;height:100%;width:0;background:var(--ac,#ff293b);border-radius:99px;transition:width .3s}' +
@@ -55,35 +57,48 @@
     '#lp .end{text-align:center;padding:40px 10px}#lp .end h2{margin:6px 0 4px;font-size:26px}#lp .tl{display:flex;gap:8px;justify-content:center;margin:18px 0}#lp .tl div{flex:1;max-width:130px;border:2px solid var(--ln,#2c2c34);border-radius:16px;padding:10px 4px}#lp .tl b{display:block;font-size:22px}';
   document.head.appendChild(css);
 
-  const ICON = {
-    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
-    flame: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg>',
-    bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>'
-  };
-  function goTab(v) { const b = document.querySelector('.babagang-nav-item[data-v="' + v + '"]'); if (b) b.click(); }
+  const FLAG = { en: '🇬🇧', ar: '🇸🇦', he: '🇮🇱', fa: '🇮🇷', ur: '🇵🇰', tr: '🇹🇷', fr: '🇫🇷', es: '🇪🇸', de: '🇩🇪', it: '🇮🇹', pt: '🇵🇹', ru: '🇷🇺', hi: '🇮🇳', ja: '🇯🇵', ko: '🇰🇷', zh: '🇨🇳' };
+  const flame = on => '<svg viewBox="0 0 24 28" width="26" height="30"><defs><linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + (on ? '#ffb11f' : '#8a8a96') + '"/><stop offset="1" stop-color="' + (on ? '#ff7a00' : '#5a5a66') + '"/></linearGradient></defs><path d="M12 1c1.2 5 7 7.5 7 14.2A7 7 0 0 1 5 15.2C5 12.8 6 11.300 7.300 10c.2 2.300 1.200 3.500 2.700 3.700C9.500 9 10 5 12 1z" fill="url(#sbg)" stroke="#fff" stroke-width="1.400" stroke-linejoin="round"/></svg>';
   function mountBar() {
     const h = document.querySelector('body > header'); if (!h || $('sb')) return;
     const d = document.createElement('div'); d.id = 'sb';
-    d.innerHTML = '<button class="av" data-sb="profile" aria-label="Profile">' + ICON.user + '</button><button data-sb="lang" aria-label="Language you are learning"><span class="lgc" id="sb-l"></span></button>' +
-      '<button class="fl" data-sb="streak" aria-label="Day streak">' + ICON.flame + '<span id="sb-s">0</span></button><button class="xp" data-sb="xp" aria-label="Points">' + ICON.bolt + '<span id="sb-x">0</span></button>';
+    d.innerHTML = '<button class="lgb" data-sb="lang" aria-label="Language you are learning" aria-haspopup="listbox"><span class="fg" id="sb-f"></span><span class="ch">▾</span></button>' +
+      '<button class="stk" data-sb="streak" aria-label="Day streak"><span id="sb-fl"></span><span id="sb-s">0</span></button><div id="sb-m" role="listbox"></div>';
     h.appendChild(d);
     d.addEventListener('click', e => {
-      const b = e.target.closest('[data-sb]'); if (!b) return; const k = b.dataset.sb;
-      if (k === 'profile') goTab('profile');
-      else if (k === 'lang') { try { window.SafinaUI.open(); } catch (_) { goTab('profile'); } }
-      else if (k === 'streak') toast(streak() + '-day streak. Watch, practise or review a little each day to keep it.');
-      else toast(allXp() + ' points · ' + XP.today() + ' from lessons today');
+      const o = e.target.closest('[data-pick]');
+      if (o) { pickLang(o.dataset.pick); return; }
+      const b = e.target.closest('[data-sb]');
+      if (!b) return; const k = b.dataset.sb;
+      if (k === 'lang') toggleMenu(); else { closeMenu(); toast(streak() + '-day streak. Watch, practise or review a little each day to keep it.'); }
     });
+    document.addEventListener('click', e => { if (!e.target.closest('#sb')) closeMenu(); }, true);
     paintBar();
+  }
+  function closeMenu() { const m = $('sb-m'); if (m) m.classList.remove('on'); }
+  function toggleMenu() {
+    const m = $('sb-m'); if (!m) return;
+    if (m.classList.contains('on')) return closeMenu();
+    const cur = SAI.lang().learn, L = SAI.LANGS || (window.SafinaAI && window.SafinaAI.LANGS) || {};
+    m.innerHTML = '<div class="mh">I am learning</div>' + Object.keys(L).filter(c => c !== SAI.lang().native || c === cur).map(c => '<button role="option" data-pick="' + c + '"' + (c === cur ? ' class="cur"' : '') + '><span class="fg">' + (FLAG[c] || '🏳️') + '</span><span>' + esc(L[c].name) + '</span>' + (c === cur ? '<b>✓</b>' : '') + '</button>').join('');
+    m.classList.add('on');
+  }
+  function pickLang(c) {
+    closeMenu(); const l = Object.assign({}, SAI.lang()); if (l.learn === c) return;
+    l.learn = c; if (l.native === c) l.native = c === 'en' ? 'ar' : 'en';
+    SAI.setOption('lang', l);
+    try { window.SafinaUI.applyLang(); } catch (_) { /* settings not loaded */ }
+    paintBar(); toast('Now learning ' + ((window.SafinaAI && window.SafinaAI.LANGS[c]) || { name: c }).name + '. Download its translator in AI & downloads if you have not.');
+    try { if (window.render) window.render(); } catch (_) { /* ignore */ }
   }
   /* the same points the profile page shows (10 per saved word, 2 per review, 1 per minute watched) plus lesson points */
   function allXp() { let n = 0; try { n = vocab.length * 10 + vocab.reduce((a, v) => a + v.hist.length, 0) * 2 + Math.round(Object.values(log).reduce((a, d) => a + d.sec, 0) / 60); } catch (_) { /* page not ready */ } return n + XP.total(); }
   function streak() { try { return B.progress().streak || 0; } catch (_) { return 0; } }
   function paintBar() {
     if (!$('sb')) return;
-    let code = learnLang(); try { code = String(SAI.lang().learn || code); } catch (_) { /* default */ }
-    $('sb-l').textContent = code.slice(0, 3).toUpperCase();
-    $('sb-s').textContent = streak(); $('sb-x').textContent = allXp();
+    let code = 'ar'; try { code = SAI.lang().learn; } catch (_) { /* default */ }
+    $('sb-f').textContent = FLAG[code] || '🏳️';
+    const n = streak(); $('sb-fl').innerHTML = flame(n > 0); $('sb-s').textContent = n; $('sb-s').style.color = n > 0 ? '#ff9a1f' : 'var(--mu,#8a8a96)';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountBar); else mountBar();
   setTimeout(paintBar, 700); setInterval(paintBar, 10000);
