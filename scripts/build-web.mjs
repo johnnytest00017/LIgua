@@ -30,5 +30,9 @@ for (const f of ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm']) {
   if (!existsSync(from)) fail(f + ' not found in node_modules/onnxruntime-web/dist (run npm install)');
   cpSync(from, join(ort, f));
 }
+// The app loads www/index.html. The page we edit is both_25.html, so copy it over on every build; otherwise an old index.html keeps being shipped.
+const page = join(www, 'both_25.html');
+if (existsSync(page)) { cpSync(page, join(www, 'index.html')); console.log('www/index.html <- www/both_25.html'); }
+else if (!existsSync(join(www, 'index.html'))) fail('neither www/both_25.html nor www/index.html exists');
 const mb = p => (statSync(p).size / 1048576).toFixed(1) + ' MB';
 console.log('built www/lingua-onnx.js (' + mb(join(www, 'lingua-onnx.js')) + ') and www/ort/ (' + mb(join(ort, 'ort-wasm-simd-threaded.wasm')) + ' wasm). No models bundled.');
