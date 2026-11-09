@@ -250,7 +250,7 @@
     if (llmLoaded && llmLoaded.id === rec.id) return rec;
     E.emit('status', 'Loading ' + rec.name + '…');
     const { uri } = await FS().getUri({ path: rel('llm', rec.id, rec.file), directory: 'DATA' });
-    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 1280 });
+    await plugin.load({ path: uri.replace(/^file:\/\//, ''), maxTokens: 2048 });
     llmLoaded = { id: rec.id };
     E.emit('status', '');
     return rec;
@@ -304,7 +304,7 @@
   return {
     cfg, setConfig, loadManifest, normaliseManifest, translatorsFromTemplate, urlFor, TRANSLATOR_FILES,
     autoSetup, install, remove, verify, installed, hasTranslator, busyKeys, registry,
-    marian, local, formatPrompt, selectLlm, currentLlm, unloadLlm,
+    marian, local, formatPrompt, selectLlm, currentLlm, unloadLlm, releaseMarian,
     isNative: () => E.native(), onCellular: () => E.onCellular(), hasLlmEngine: () => !!E.Llm()
   };
 });

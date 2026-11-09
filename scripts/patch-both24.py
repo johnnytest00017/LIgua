@@ -24,7 +24,7 @@ def between(start, end, new):
 
 # 1. scripts: engine before the page's own code, UI after it
 rep('<script src="lingua-native.js"></script>',
-    '<script src="safina-ai.js"></script>\n<script src="safina-models.js"></script>\n<script src="safina-boot.js"></script>')   # lingua-native.js is gone from the project and nothing else used it
+    '<script src="safina-trace.js"></script>\n<script src="safina-ai.js"></script>\n<script src="safina-models.js"></script>\n<script src="safina-boot.js"></script>')   # lingua-native.js is gone from the project and nothing else used it
 rep('</script>\n<script src="safina-library.js"></script>',
     '</script>\n<script src="safina-ai-ui.js"></script>\n<script src="safina-library.js"></script>')
 

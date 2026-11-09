@@ -88,3 +88,11 @@ test('the page loads the film manager before the preparing screen, and the Cards
   assert.match(page, /SAFINA_PREP_BUSY=true/);
   assert.match(read('www/safina-learn-ui.js'), /#cards \[data-p="rev"\]/);
 });
+
+test('the crash trace loads first and the heavy engines run inside it', () => {
+  const page = read('www/both_25.html');
+  assert.ok(page.indexOf('safina-trace.js') > 0 && page.indexOf('safina-trace.js') < page.indexOf('safina-ai.js'));
+  const boot = read('www/safina-boot.js');
+  assert.match(boot, /T\.begin\('llm'/); assert.match(boot, /T\.begin\('mt'/); assert.match(boot, /releaseMarian/);
+  assert.match(read('www/safina-film.js'), /T\.begin\('film'/);
+});

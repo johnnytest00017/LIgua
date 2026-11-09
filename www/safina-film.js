@@ -62,6 +62,7 @@
     const now = deps.now || Date.now, frame = deps.frame || (() => new Promise(r => setTimeout(r, 0)));
     const wantWords = deps.wantWords || (() => true), WORD_CAP = deps.wordCap || 600;
     const jobs = new Map(), listeners = new Set(), restored = new Set();
+    const T = deps.trace || { begin() {}, end() {}, crumb() {} };
 
     const planLines = cues => { const seen = new Set(), out = []; for (const c of cues) { const t = String(c.t || '').trim(); if (t && !seen.has(t)) { seen.add(t); out.push(t); } } return out; };
     function planWords(cues) {
@@ -122,13 +123,14 @@
       jobs.set(key, job);
       job.promise = (async () => {
         const sig = job.abort.signal; let err = '';
+        T.begin('film', 'preparing ' + (job.title || 'a film'));
         try {
           await restore(key);
           const on = aiOn(), lines = planLines(cues), lt = lines.length;
           const words = wantWords() && on ? planWords(cues) : [], wt = words.length;
           let ld = lines.filter(t => lineDone(t, on)).length, wd = words.filter(x => SAI.cachedWord(x.w, x.s)).length;
           emit(job, { state: 'running', phase: 'lines', ld, lt, wd, wt, done: ld + wd, total: lt + wt, err: '' });
-          const bsize = deps.batch || (SAI.state && SAI.state().mtMode === 'local' ? 3 : 10);
+          const bsize = deps.batch || (SAI.state && SAI.state().mtMode === 'local' ? 6 : 10);
           const need = lines.filter(t => !lineDone(t, on));
           let empty = 0, failed = false;
           const pass = async list => {
@@ -167,7 +169,7 @@
         } catch (e) {
           emit(job, { state: 'error', phase: 'done', err: (e && e.message) || String(e) });
           return null;
-        } finally { jobs.delete(key); }
+        } finally { jobs.delete(key); T.end('film'); }
       })();
       return job.promise;
     }
@@ -194,16 +196,13 @@
   const F = window.SafinaFilm, SAI = window.SAI;
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (_) { return d; } };
   const MGR = F.create({
-    SAI, indexedDB: window.indexedDB,
+    SAI, indexedDB: window.indexedDB, trace: window.SAFINA_TRACE,
     tokens: t => (typeof window.tokens === 'function' ? window.tokens(t) : String(t).split(/\s+/)),
     wantWords: () => lsGet('safina.prep.words', '1') !== '0',
     frame: () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)))
   });
   window.SAFINA_FILM = MGR;
   const bgOn = () => lsGet('safina.film.bg', '1') !== '0';
-  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
-  const lsDel = k => { try { localStorage.removeItem(k); } catch (_) {} };
-  if (lsGet('safina.film.busy', '')) { lsSet('safina.film.bg', '0'); lsDel('safina.film.busy'); lsSet('safina.film.crashed', '1'); }
 
   /* ---- progress per library card ---- */
   const recs = new Map();          // videoId -> { tile, key, state, done, total, err }
@@ -282,9 +281,7 @@
         try {
           const cues = await cuesFor(q.rec, q.getFile); if (!cues) { r.state = 'partial'; r.err = 'No Arabic subtitles'; continue; }
           const key = MGR.key(cues); byKey.set(key, q.videoId);
-          lsSet('safina.film.busy', String(q.videoId));
           await MGR.ensure(cues, { title: q.tile });
-          lsDel('safina.film.busy');
         } catch (e) { r.state = 'error'; r.err = (e && e.message) || String(e); }
         soon();
         await new Promise(res => setTimeout(res, 300));
@@ -313,7 +310,9 @@
       }
     } catch (e) { /* the library is optional */ } finally { scanning = false; soon(); work(); }
   }
-  let sc = null; const rescan = () => { clearTimeout(sc); sc = setTimeout(scan, 900); };
+  /* nothing heavy in the first seconds after the app opens */
+  const bootAt = Date.now();
+  let sc = null; const rescan = () => { clearTimeout(sc); sc = setTimeout(scan, Math.max(900, 15000 - (Date.now() - bootAt))); };
 
   /* the library redraws its cards through lib(): add the bars after every redraw, and look for new films */
   function hook() {
@@ -324,6 +323,6 @@
   }
   let tries = 0; const iv = setInterval(() => { if (hook() || ++tries > 40) clearInterval(iv); }, 250);
   window.addEventListener('safina-ai-changed', rescan);
-  setTimeout(rescan, 8000);
+  setTimeout(rescan, 15000);
   window.SAFINA_FILM_SCAN = rescan;
 })();

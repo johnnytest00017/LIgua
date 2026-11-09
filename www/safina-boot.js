@@ -32,10 +32,28 @@
   window.SAFINA_HTTP = http;     // the same transport, for the news feeds
 
   const M = window.SafinaModels;
+  /* The two heavy on-phone engines run inside the crash trace: if the app closes while one is working, the next start switches it
+   * off (instead of crashing again) and says so. The translator also frees its memory every so often, since a whole film is
+   * thousands of lines in a row. */
+  const T = window.SAFINA_TRACE || { begin() {}, end() {}, guarded: () => false, crumb() {} };
+  let mtCount = 0;
+  const guardedLocal = Object.assign({}, M.local, {
+    ready: () => !T.guarded('llm') && M.local.ready(),
+    chat: async a => { T.begin('llm', 'on-phone AI'); try { return await M.local.chat(a); } finally { T.end('llm'); } }
+  });
+  const guardedMt = Object.assign({}, M.marian, {
+    ready: (s, t) => !T.guarded('mt') && M.marian.ready(s, t),
+    translate: async (text, s, t) => {
+      if (T.guarded('mt')) throw new Error('The on-phone translator is switched off after a crash');
+      if (++mtCount % 120 === 0 && M.releaseMarian) { T.crumb('mt-release', mtCount); try { await M.releaseMarian(); } catch (_) { /* ignore */ } }
+      T.begin('mt', mtCount === 1 ? 'on-phone translator (first line, loading the model)' : 'on-phone translator');
+      try { return await M.marian.translate(text, s, t); } finally { T.end('mt'); }
+    }
+  });
   window.SAI = window.SafinaAI.create({
     store, http,
-    local: M.local,
-    mt: M.marian,
+    local: guardedLocal,
+    mt: guardedMt,
     level: () => (window.BRAIN ? window.BRAIN.level().level : ''),
     askLimit: o => (window.SafinaUI ? window.SafinaUI.askLimit(o) : Promise.resolve(null))
   });

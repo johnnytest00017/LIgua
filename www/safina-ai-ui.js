@@ -165,6 +165,8 @@
     }
     h += '<h3>When a limit is reached</h3><div class="sai-card"><label class="sai-sw"><input type="checkbox" data-act="locallimit"' + (st.localOnLimit !== false ? ' checked' : '') + '><span><b>Switch to the on-phone AI</b><br><span class="sai-mu">When the powerful AI runs out, carry on with the on-phone AI (if downloaded) and go back when the limit resets.</span></span></label></div><div class="sai-card"><label class="sai-sw"><input type="radio" name="sai-lim" data-act="autoswitch" value="0"' + (!st.autoSwitch ? ' checked' : '') + '><span><b>Ask me</b><br><span class="sai-mu">Choose: same model on another account, another model on the same account, another AI, or the on-phone AI.</span></span></label>' +
       '<label class="sai-sw"><input type="radio" name="sai-lim" data-act="autoswitch" value="1"' + (st.autoSwitch ? ' checked' : '') + '><span><b>Switch automatically</b><br><span class="sai-mu">In that order, without asking.</span></span></label></div>';
+    const TR = window.SAFINA_TRACE, off = TR ? ['llm', 'mt', 'film'].filter(k => TR.guarded(k)) : [];
+    if (off.length) h += '<h3>Switched off after a crash</h3><div class="sai-card">' + off.map(k => '<div class="sai-row" style="align-items:center;justify-content:space-between;margin:6px 0"><span>' + ({ llm: 'The on-phone AI', mt: 'The on-phone translator', film: 'Preparing films in the background' }[k]) + '</span><button class="sai-btn" data-act="unguard" data-k="' + k + '">Turn on</button></div>').join('') + '<div class="sai-mu">The app closed while this was working, so it was switched off to stop it happening again.</div></div>';
     const flag = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v !== '0'; } catch (_) { return d; } };
     h += '<h3>Films</h3><div class="sai-card"><label class="sai-sw"><input type="checkbox" data-act="lsflag" data-k="safina.film.bg"' + (flag('safina.film.bg', true) ? ' checked' : '') + '><span><b>Prepare films after importing</b><br><span class="sai-mu">Translate the whole film once in the background and save it. The film\u2019s card in the library shows the progress.</span></span></label>' +
       '<label class="sai-sw" style="margin-top:10px"><input type="checkbox" data-act="lsflag" data-k="safina.prep.words"' + (flag('safina.prep.words', true) ? ' checked' : '') + '><span><b>Also prepare each word\u2019s meaning</b><br><span class="sai-mu">Uses the AI. Words you tap later appear instantly.</span></span></label></div>';
@@ -239,6 +241,7 @@
     else if (act === 'brain-on') { window.BRAIN.setOption('on', t.checked); }
     else if (act === 'brain-every') { window.BRAIN.setOption('every', t.value); }
     else if (act === 'locallimit') { SAI.setOption('localOnLimit', t.checked); }
+    else if (act === 'lsflag') { try { localStorage.setItem(t.dataset.k, t.checked ? '1' : '0'); } catch (_) { /* private mode */ } if (t.dataset.k === 'safina.film.bg' && t.checked && window.SAFINA_FILM_SCAN) window.SAFINA_FILM_SCAN(); }
     else if (act === 'autoswitch') { SAI.setOption('autoSwitch', t.value === '1'); }
   });
 
@@ -295,7 +298,7 @@
     else if (act === 'acc-up' || act === 'acc-down') { SAI.moveAccount(id, act === 'acc-up' ? -1 : 1); render(); }
     else if (act === 'acc-models') { msgs[id] = 'Loading the model list…'; render(); try { const m = await SAI.refreshModels(id); msgs[id] = m.length + ' models found'; } catch (err) { msgs[id] = 'Could not load models: ' + err.message; } render(); }
     else if (act === 'acc-test') { msgs[id] = 'Testing…'; render(); try { msgs[id] = '✓ Works. Reply: ' + await SAI.testAccount(id); } catch (err) { msgs[id] = '✗ ' + err.message; } render(); }
-    else if (act === 'lsflag') { try { localStorage.setItem(t.dataset.k, t.checked ? '1' : '0'); } catch (_) { /* private mode */ } if (t.dataset.k === 'safina.film.bg' && t.checked && window.SAFINA_FILM_SCAN) window.SAFINA_FILM_SCAN(); }
+    else if (act === 'unguard') { if (window.SAFINA_TRACE) window.SAFINA_TRACE.unguard(b.dataset.k); render(); }
     else if (act === 'log-view') { logView(); }
     else if (act === 'log-copy') { const m = $id('sai-logmsg'); try { await navigator.clipboard.writeText(SAI.log.exportText()); m.textContent = 'Copied ' + SAI.log.count() + ' entries.'; } catch (_) { m.textContent = 'Could not copy. Use Save as file.'; } }
     else if (act === 'log-file') { await logFile(); }
