@@ -354,6 +354,11 @@ rep('(on?"<i class=\'pp\'>▶</i>":"")', '(on?"<i class=\'pp\'>"+(it&&it.glyph||
 rep('const lvOf=it=>it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs");', 'const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));')
 rep('<script src="safina-prep-ui.js"></script>', '<script src="safina-prep-ui.js"></script>\n<script src="safina-books.js"></script>')
 
+# ---- storage shim: pages opened in a sandboxed viewer have no localStorage; fall back to memory so the app still starts ----
+_B = '<script src="safina-tree.js"></script>'
+assert s.count(_B) == 1
+s = s.replace(_B, _B + '\n<script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>', 1)
+
 # ---- look: planet header + rounded sheet, dark with red (www/safina-theme.css) ----
 _i = s.rindex('</body>')
 s = s[:_i] + '<link rel="stylesheet" href="safina-theme.css">\n' + s[_i:]
