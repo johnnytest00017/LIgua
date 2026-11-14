@@ -231,25 +231,35 @@
     $('sbk-fix').onclick = ev => { ev.preventDefault(); oc.innerHTML = '<textarea id="sbk-ta" dir="auto">' + esc(t || '') + '</textarea><div style="margin-top:8px"><button id="sbk-ok" style="height:40px;padding:0 18px;border:0;border-radius:12px;background:var(--ac,#e11d2e);color:#fff;font-weight:700">Done</button></div>'; $('sbk-ta').focus(); $('sbk-ok').onclick = () => showText($('sbk-ta').value.trim()); };
   }
 
-  /* ---- the + (Add to your library) sheet: Book and Comic options with an Upload button ---- */
+  /* ---- the + (Add to your library) sheet: a Video / Book / Comic switch with an Upload button ---- */
+  let mode = 'video';
   function addSheet() {
-    const sel = $('safina-import-type'), form = $('safina-import-form'); if (!sel || !form || $('sbk-add')) return;
-    [['book', '📖 Book (PDF, EPUB, Word, TXT)'], ['comic', '🖼 Comic (PDF, CBZ, pictures)']].forEach(o => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
-    const box = document.createElement('div'); box.id = 'sbk-add'; box.style.display = 'none';
-    box.innerHTML = '<div class="safina-pick"><button type="button" class="pri" id="sbk-up" style="width:100%;height:52px"></button></div><div class="mu" id="sbk-hint" style="margin-top:10px;line-height:1.5"></div>';
-    sel.after(box);
+    const form = $('safina-import-form'), sel = $('safina-import-type'); if (!form || !sel) return;
+    if ($('sbk-seg') && $('sbk-add')) return;
+    ['sbk-seg', 'sbk-add'].forEach(i => { const o = $(i); if (o) o.remove(); });
+    const seg = document.createElement('div'); seg.id = 'sbk-seg';
+    seg.innerHTML = [['video', 'Video'], ['book', 'Book'], ['comic', 'Comic']].map(m => '<button type="button" data-m="' + m[0] + '">' + m[1] + '</button>').join('');
+    const box = document.createElement('div'); box.id = 'sbk-add';
+    box.innerHTML = '<button type="button" class="pri" id="sbk-up"></button><div class="mu" id="sbk-hint"></div>';
+    form.prepend(seg); seg.after(box);
     const sync = () => {
-      const k = sel.value, bc = k === 'book' || k === 'comic';
-      [...form.children].forEach(el => { if (el === sel || el === box || (el.tagName === 'LABEL' && el.getAttribute('for') === 'safina-import-type')) return; el.style.display = bc ? 'none' : ''; });
+      const bc = mode !== 'video';
+      [...form.children].forEach(el => { if (el === seg || el === box) return; el.style.display = bc ? 'none' : ''; });
       box.style.display = bc ? '' : 'none';
-      if (bc) { $('sbk-up').textContent = k === 'book' ? '⬆ Upload a book' : '⬆ Upload a comic'; $('sbk-hint').textContent = k === 'book' ? 'PDF, EPUB, Word (.docx), TXT, Markdown or HTML. Tap any word while reading to see its meaning and save the sentence.' : 'A PDF, a CBZ/ZIP of pages, or a set of pictures. Tap "Read text" on a page, then tap a speech bubble.'; }
+      seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+      if (bc) { $('sbk-up').textContent = mode === 'book' ? '⬆  Upload a book' : '⬆  Upload a comic'; $('sbk-hint').textContent = mode === 'book' ? 'PDF, EPUB, Word (.docx), TXT, Markdown or HTML. Tap any word while reading to see its meaning and save the sentence.' : 'A PDF, a CBZ/ZIP of pages, or a set of pictures. Tap "Read text" on a page, then tap a speech bubble.'; }
     };
-    sel.addEventListener('change', sync);
-    $('sbk-up').onclick = () => { const k = sel.value === 'book' ? 'BOOK' : 'COMIC'; const x = $('safina-add-close'); if (x) x.click(); pick(k); };
+    seg.addEventListener('click', e => { const b = e.target.closest('[data-m]'); if (!b) return; mode = b.dataset.m; sync(); });
+    $('sbk-up').onclick = () => { const k = mode === 'book' ? 'BOOK' : 'COMIC'; const x = $('safina-add-close'); if (x) x.click(); pick(k); };
     const h = $('safina-add-heading'); if (h && h.nextElementSibling) h.nextElementSibling.textContent = 'Videos, books and comics from your phone';
     sync();
   }
+  const sheetCss = document.createElement('style');
+  sheetCss.textContent = '#sbk-seg{display:flex;gap:6px;padding:4px;border-radius:16px;background:rgba(255,255,255,.06);margin:2px 0 14px}#sbk-seg button{flex:1;height:40px;border:0;border-radius:12px;background:transparent;color:#a9acb4;font:700 14px "Plus Jakarta Sans",system-ui,sans-serif}#sbk-seg button.on{background:var(--ac,#e11d2e);color:#fff}' +
+    '#sbk-add #sbk-up{width:100%;height:54px;border:0;border-radius:16px;background:var(--ac,#e11d2e);color:#fff;font:800 16px "Plus Jakarta Sans",system-ui,sans-serif}#sbk-add .mu{margin-top:12px;line-height:1.55;font-size:13px}';
+  document.head.appendChild(sheetCss);
+
   window.SAFINA_BOOKS = { pick, open, refresh, parseEpub, parseTxt, parseComic, parsePdfBook, parsePdfComic };
-  const start = () => { setTimeout(refresh, 600); addSheet(); };
+  const start = () => { setTimeout(refresh, 600); addSheet(); setInterval(addSheet, 800); document.addEventListener('click', () => setTimeout(addSheet, 60), true); };
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', start) : start();
 })();

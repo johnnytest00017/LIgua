@@ -1,0 +1,36 @@
+/* Safina: original look + a soft glow background, a bigger wordmark, a smaller My Library and a diamond add button. */
+:root{--ac-rgb:225,29,46}
+html,body{background:#070708!important}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(90% 34% at 50% -8%,rgba(var(--ac-rgb),.20),transparent 72%)}
+.rh .mu,.safina-library-head .mu{display:none!important}
+header,main{position:relative;z-index:1}
+header{z-index:5}
+@font-face{font-family:"SafinaMark";src:url(data:font/woff;base64,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) format("woff");font-weight:400}
+.brand-name{font-family:"Introvert","SafinaMark","Plus Jakarta Sans",system-ui,sans-serif!important;font-size:56px!important;font-weight:400!important;line-height:1!important;letter-spacing:.01em!important;gap:12px!important}
+.brand-name::before{width:14px!important;height:14px!important;flex:0 0 14px!important}
+.safina-library-head h2{font-size:16px!important;line-height:1.1!important;letter-spacing:.01em}
+.safina-library-head .mu{font-size:12px!important}
+
+/* add button: red circle > white outlined diamond > white plus, all centred */
+#safina-add{position:relative;width:34px!important;min-width:34px!important;height:34px!important;flex:0 0 34px!important;margin:2px 6px 2px 0;padding:0!important;border:0!important;border-radius:50%!important;
+  background:var(--ac)!important;color:transparent!important;font-size:0!important;line-height:0!important;box-shadow:0 8px 22px rgba(var(--ac-rgb),.45)!important}
+#safina-add::before{content:""!important;display:block!important;position:absolute!important;left:50%;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px!important;border:1.5px solid #fff;border-radius:4px;box-sizing:border-box;transform:rotate(45deg)}
+#safina-add::after{content:""!important;display:block!important;position:absolute!important;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px!important;
+  background:linear-gradient(#fff,#fff) center/100% 2px no-repeat,linear-gradient(#fff,#fff) center/2px 100% no-repeat}
+#safina-add:active{transform:scale(.94)}
+
+/* selects (daily goal etc.) */
+#profile select{appearance:none;-webkit-appearance:none;background:#1f2023 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.500 6 6.500 11 1.500' fill='none' stroke='%23fff' stroke-width='1.800' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:7px 34px 7px 12px;font:700 14px "Plus Jakarta Sans",system-ui,sans-serif;margin-left:4px}
+#profile select:focus{outline:0;border-color:var(--ac);box-shadow:0 0 0 3px rgba(var(--ac-rgb),.28)}
+
+/* appearance card in Profile */
+#acc-card .sw{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+#acc-card .sw button{width:34px;height:34px;border-radius:12px;border:2px solid transparent;padding:0;cursor:pointer}
+#acc-card .sw button.on{border-color:#fff}
+#acc-card .hx{display:flex;gap:10px;align-items:center}
+#acc-card .hx input[type=color]{width:46px;height:42px;padding:2px;border-radius:12px;background:transparent;border:1px solid var(--ln)}
+#acc-card .hx input[type=text]{flex:1;min-width:0;height:42px;padding:0 12px;font:700 16px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.04em;background:#101012;color:#fff;border:1px solid var(--ln);border-radius:12px}
+#acc-card .hx button{height:42px;padding:0 16px;border-radius:12px;background:var(--ac);color:var(--on,#fff);border:0;font-weight:700}
+#acc-card .bad{color:#ff6b6b;font-size:13px;margin-top:6px;min-height:16px}
+#library .pp{display:none!important}
+.safina-add-panel{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}

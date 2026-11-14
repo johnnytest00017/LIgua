@@ -13,6 +13,7 @@
 <script src="safina-boot.js"></script>
 <script src="safina-match.js"></script>
 <script src="safina-tree.js"></script>
+<script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
@@ -1571,8 +1572,8 @@ $("goal").onchange=render;
 const TR='<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>';
 const ROWS=[["Movies","Learn from films","Movie","MOVIE",[["Daily Phrases","Soon","","#1f5f7a,#0b1e2b"],["Import Your Own Film","Your file","w","#7a3b1f,#1b0f0a"],["Licensed Catalog","Soon","","#3b2f6b,#12102a"],["Public Domain Films","Soon","","#2f5d3a,#0d1a10"]]],
 ["TV Shows","Series built for listening practice","TV Show","TV",[["Beginner Dialogues","Soon","","#6b1f2f,#1a0a0e"],["Import An Episode","Your file","w","#1f4f6b,#0a1620"],["Licensed Catalog","Soon","","#5a4a1f,#1a150a"]]],
-["Books","Read with tap-to-translate","Book","BOOK",[["Public Domain Arabic","Soon","","#4a2f6b,#150f22"],["Import EPUB","Soon","","#2f5d5a,#0d1a19"]]],
-["Comics","Dialogue bubbles + OCR","Comic","COMIC",[["Public Domain Comics","Soon","","#6b2f4a,#220f18"],["Import Pages","Soon","","#3a5a2f,#121a0d"]]]];
+["Books","Read with tap-to-translate","Book","BOOK",[["Public Domain Arabic","Soon","","#4a2f6b,#150f22"],["Import Book (PDF / EPUB / TXT)","Your file","w","#2f5d5a,#0d1a19"]]],
+["Comics","Dialogue bubbles + OCR","Comic","COMIC",[["Public Domain Comics","Soon","","#6b2f4a,#220f18"],["Import Comic (PDF / images / CBZ)","Your file","w","#3a5a2f,#121a0d"]]]];
 let LIBD={movies:[],shows:[]};
 const PAL=["#1f5f7a,#0b1e2b","#7a3b1f,#1b0f0a","#6b1f2f,#1a0a0e","#3b2f6b,#12102a","#2f5d3a,#0d1a10","#5a4a1f,#1a150a"];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1592,12 +1593,12 @@ const RI={MOVIE:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="1
 let LF="all";
 function lib(){const R=$("rows");R.innerHTML="";
  const rows=ROWS.map(r=>r.slice());
- [[0,LIBD.movies],[1,LIBD.shows]].forEach(z=>{if(z[1].length)rows[z[0]][4]=z[1].concat(ROWS[z[0]][4].filter(x=>x[2]))});
- const lvOf=it=>it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs");
+ [[0,LIBD.movies],[1,LIBD.shows],[2,LIBD.books||[]],[3,LIBD.comics||[]]].forEach(z=>{if(z[1].length)rows[z[0]][4]=z[1].concat(ROWS[z[0]][4].filter(x=>x[2]))});
+ const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));
  const real=[];rows.forEach(r=>r[4].forEach(x=>{if(!Array.isArray(x))real.push(x)}));
  const sub=document.querySelector(".safina-library-head .mu");if(sub)sub.textContent=real.length?real.length+" title"+(real.length>1?"s":"")+" ready to learn from":"Your personal collection";
  const bar=document.createElement("div");bar.className="lchips";
- [["all","All"],["MOVIE","Movies"],["TV","TV shows"]].forEach(f=>{const b=document.createElement("button");b.textContent=f[1];b.className=LF==f[0]?"on":"";b.onclick=()=>{LF=f[0];lib()};bar.append(b)});
+ [["all","All"],["MOVIE","Movies"],["TV","TV shows"],["BOOK","Books"],["COMIC","Comics"]].forEach(f=>{const b=document.createElement("button");b.textContent=f[1];b.className=LF==f[0]?"on":"";b.onclick=()=>{LF=f[0];lib()};bar.append(b)});
  R.append(bar);
  if(real.length&&LF=="all"){const it=real[0],h=document.createElement("div");h.className="lhero";
   h.style.background=(it.poster?"linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+it.poster+"') center/cover,":"")+"linear-gradient(135deg,"+PAL[0].split(",")[0]+",#0b0b0c)";
@@ -1605,16 +1606,16 @@ function lib(){const R=$("rows");R.innerHTML="";
   if(!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(u)h.style.background="linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+u+"') center/cover,#0b0b0c"})}
   h.onclick=()=>it.open();R.append(h)}
  rows.filter(r=>LF=="all"||r[3]==LF).forEach(r=>{
-  const h=document.createElement("div");h.className="rh";h.innerHTML="<div><h2>"+(RI[r[3]]||"")+r[0]+"</h2><div class='mu'>"+r[1]+"</div></div><div class='arr'><button aria-label='Previous'>‹</button><button aria-label='Next'>›</button></div>";
+  const h=document.createElement("div");h.className="rh";h.innerHTML="<div><h2>"+(RI[r[3]]||"")+r[0]+"</h2></div><div class='arr'><button aria-label='Previous'>‹</button><button aria-label='Next'>›</button></div>";
   const row=document.createElement("div");row.className="row";
   const bs=h.querySelectorAll("button");bs[0].onclick=()=>row.scrollBy({left:-360,behavior:"smooth"});bs[1].onclick=()=>row.scrollBy({left:360,behavior:"smooth"});
   r[4].forEach((x,xi)=>{const it=Array.isArray(x)?null:x,c=document.createElement("div"),
    name=it?it.title:x[0],lvl=it?lvOf(it):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
    c.className="pc"+(on?"":" soon");
    const bg=(it&&it.poster?"url('"+it.poster+"') center/cover,":"")+"linear-gradient(160deg,"+g[0]+","+g[1]+")";
-   c.innerHTML="<div class='poster' style=\"background:"+bg+"\"><span class='tag'>"+r[3]+"</span><span class='lv"+(on&&lvl!="No subs"?"":" g")+"'>"+esc(lvl)+"</span>"+(it&&it.poster?"":"<span class='pn'>"+esc(name)+"</span>")+(on?"<i class='pp'>▶</i>":"")+"</div><div class='pt'>"+esc(name)+"</div><div class='pm'>"+esc(it&&it.sub?it.sub:r[2])+" · "+esc(SAI.langInfo(LEARN()).name)+"</div>";
+   c.innerHTML="<div class='poster' style=\"background:"+bg+"\"><span class='tag'>"+r[3]+"</span><span class='lv"+(on&&lvl!="No subs"?"":" g")+"'>"+esc(lvl)+"</span>"+(it&&it.poster?"":"<span class='pn'>"+esc(name)+"</span>")+(on?"<i class='pp'>"+(it&&it.glyph||"▶")+"</i>":"")+"</div><div class='pt'>"+esc(name)+"</div><div class='pm'>"+esc(it&&it.sub?it.sub:r[2])+" · "+esc(SAI.langInfo(LEARN()).name)+"</div>";
    if(it&&!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(!u)return;const pe=c.querySelector(".poster");if(!pe)return;pe.style.background="url('"+u+"') center/cover,linear-gradient(160deg,"+g[0]+","+g[1]+")";const pn=pe.querySelector(".pn");if(pn)pn.remove()})}
-   if(on)c.onclick=()=>it?it.open():/^Import/.test(name)?openImport({type:r[3]=="TV"?"tv":"movie"}):nav("watch");row.append(c)});
+   if(on)c.onclick=()=>it?it.open():/^Import/.test(name)?(r[3]=="BOOK"||r[3]=="COMIC"?window.SAFINA_BOOKS.pick(r[3]):openImport({type:r[3]=="TV"?"tv":"movie"})):nav("watch");row.append(c)});
   R.append(h,row)})}
 let SV={yt:0,ai:0,lib:0};
 // ---- socials
@@ -1979,6 +1980,8 @@ render();
 <script src="safina-path.js"></script>
 <script src="safina-film.js"></script>
 <script src="safina-prep-ui.js"></script>
+<script src="safina-books.js"></script>
+<script src="safina-color.js"></script>
 <script src="safina-library.js"></script>
 <script>
 /* swipe left/right to move Library ⇄ Socials ⇄ Cards ⇄ Profile */
@@ -4000,4 +4003,5 @@ ed.addEventListener('touchcancel',end,{passive:true});
 #watch.apk-set #apk-wm{display:none!important}
 @container (max-height:230px){#apk-wm .wd{font-size:24px}#apk-wm.on{padding:6px 20px 8px}}
 </style>
+<link rel="stylesheet" href="safina-theme.css">
 </body></html>

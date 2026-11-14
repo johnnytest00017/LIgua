@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turns both_24.html into both_25.html: translation + AI tutor go through the shared engine (safina-ai.js).
 Every replacement must match exactly once, otherwise the script stops, so nothing is changed silently."""
-import sys
+import os, sys
 
 src, dst = sys.argv[1], sys.argv[2]
 s = open(src, encoding='utf-8').read()
@@ -295,7 +295,7 @@ rep('<script src="safina-boot.js"></script>', '<script src="safina-brain.js"></s
 rep('<script src="safina-ai-ui.js"></script>', '<script src="safina-ai-ui.js"></script>\n<script src="safina-brain-ui.js"></script>')
 rep('<script src="safina-brain-ui.js"></script>', '<script src="safina-brain-ui.js"></script>\n<script src="safina-learn-ui.js"></script>')
 # 12. Smooth playback: translate everything first (with progress), keep the layout still, do less work per frame
-rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-path.js"></script>\n<script src="safina-film.js"></script>\n<script src="safina-prep-ui.js"></script>')
+rep('<script src="safina-learn-ui.js"></script>', '<script src="safina-learn-ui.js"></script>\n<script src="safina-path.js"></script>\n<script src="safina-film.js"></script>\n<script src="safina-prep-ui.js"></script>\n<script src="safina-color.js"></script>')
 rep('  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.")}\n catch(e){toast("Could not start playback: "+e.message)}}',
     '  if(!AR.length)toast("No Arabic subtitle for this item. Import an Arabic .srt together with the video.");\n  else{window.SAFINA_PREP_BUSY=true;setTimeout(()=>{try{SAFINA_PREP.offer()}catch(e){window.SAFINA_PREP_BUSY=false}},80)}}\n catch(e){toast("Could not start playback: "+e.message)}}')
 rep("  toast(msg.join(' · '));e.target.value=''};",
@@ -342,6 +342,26 @@ rep('''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>wh
     '''(v.kind=="line"?"<div class='mu' style='direction:ltr;text-align:left'>whole line</div>":"")+(v.auto?"<div class='mu' style='direction:ltr;text-align:left'>🧠 AI"+(v.lvl?" · "+esc(v.lvl):"")+(v.why?" · "+esc(v.why):"")+"</div>":"")+"</td><td>"+v.tr+''')
 
 rep('const xp=n*10+rv*2+mins,lv=', 'const xp=n*10+rv*2+mins+(window.SAFINA_XP?window.SAFINA_XP.total():0),lv=')
+
+# ---- library: books and comics ----
+rep('[[0,LIBD.movies],[1,LIBD.shows]].forEach(z=>', '[[0,LIBD.movies],[1,LIBD.shows],[2,LIBD.books||[]],[3,LIBD.comics||[]]].forEach(z=>')
+rep('[["all","All"],["MOVIE","Movies"],["TV","TV shows"]]', '[["all","All"],["MOVIE","Movies"],["TV","TV shows"],["BOOK","Books"],["COMIC","Comics"]]')
+rep('"<div><h2>"+(RI[r[3]]||"")+r[0]+"</h2><div class=\'mu\'>"+r[1]+"</div></div>', '"<div><h2>"+(RI[r[3]]||"")+r[0]+"</h2></div>')
+rep('["Import EPUB","Soon","","#2f5d5a,#0d1a19"]', '["Import Book (PDF / EPUB / TXT)","Your file","w","#2f5d5a,#0d1a19"]')
+rep('["Import Pages","Soon","","#3a5a2f,#121a0d"]', '["Import Comic (PDF / images / CBZ)","Your file","w","#3a5a2f,#121a0d"]')
+rep('/^Import/.test(name)?openImport({type:r[3]=="TV"?"tv":"movie"})', '/^Import/.test(name)?(r[3]=="BOOK"||r[3]=="COMIC"?window.SAFINA_BOOKS.pick(r[3]):openImport({type:r[3]=="TV"?"tv":"movie"}))')
+rep('(on?"<i class=\'pp\'>▶</i>":"")', '(on?"<i class=\'pp\'>"+(it&&it.glyph||"▶")+"</i>":"")')
+rep('const lvOf=it=>it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs");', 'const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));')
+rep('<script src="safina-prep-ui.js"></script>', '<script src="safina-prep-ui.js"></script>\n<script src="safina-books.js"></script>')
+
+# ---- storage shim: pages opened in a sandboxed viewer have no localStorage; fall back to memory so the app still starts ----
+_B = '<script src="safina-tree.js"></script>'
+assert s.count(_B) == 1
+s = s.replace(_B, _B + '\n<script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>', 1)
+
+# ---- look: planet header + rounded sheet, dark with red (www/safina-theme.css) ----
+_i = s.rindex('</body>')
+s = s[:_i] + '<link rel="stylesheet" href="safina-theme.css">\n' + s[_i:]
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('patched OK ->', dst, len(s), 'chars')
