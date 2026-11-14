@@ -32,3 +32,4 @@ header{z-index:5}
 #acc-card .hx button{height:42px;padding:0 16px;border-radius:12px;background:var(--ac);color:var(--on,#fff);border:0;font-weight:700}
 #acc-card .bad{color:#ff6b6b;font-size:13px;margin-top:6px;min-height:16px}
 #library .pp{display:none!important}
+.safina-add-panel{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}

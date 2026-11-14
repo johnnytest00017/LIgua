@@ -231,7 +231,25 @@
     $('sbk-fix').onclick = ev => { ev.preventDefault(); oc.innerHTML = '<textarea id="sbk-ta" dir="auto">' + esc(t || '') + '</textarea><div style="margin-top:8px"><button id="sbk-ok" style="height:40px;padding:0 18px;border:0;border-radius:12px;background:var(--ac,#e11d2e);color:#fff;font-weight:700">Done</button></div>'; $('sbk-ta').focus(); $('sbk-ok').onclick = () => showText($('sbk-ta').value.trim()); };
   }
 
+  /* ---- the + (Add to your library) sheet: Book and Comic options with an Upload button ---- */
+  function addSheet() {
+    const sel = $('safina-import-type'), form = $('safina-import-form'); if (!sel || !form || $('sbk-add')) return;
+    [['book', '📖 Book (PDF, EPUB, Word, TXT)'], ['comic', '🖼 Comic (PDF, CBZ, pictures)']].forEach(o => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
+    const box = document.createElement('div'); box.id = 'sbk-add'; box.style.display = 'none';
+    box.innerHTML = '<div class="safina-pick"><button type="button" class="pri" id="sbk-up" style="width:100%;height:52px"></button></div><div class="mu" id="sbk-hint" style="margin-top:10px;line-height:1.5"></div>';
+    sel.after(box);
+    const sync = () => {
+      const k = sel.value, bc = k === 'book' || k === 'comic';
+      [...form.children].forEach(el => { if (el === sel || el === box || (el.tagName === 'LABEL' && el.getAttribute('for') === 'safina-import-type')) return; el.style.display = bc ? 'none' : ''; });
+      box.style.display = bc ? '' : 'none';
+      if (bc) { $('sbk-up').textContent = k === 'book' ? '⬆ Upload a book' : '⬆ Upload a comic'; $('sbk-hint').textContent = k === 'book' ? 'PDF, EPUB, Word (.docx), TXT, Markdown or HTML. Tap any word while reading to see its meaning and save the sentence.' : 'A PDF, a CBZ/ZIP of pages, or a set of pictures. Tap "Read text" on a page, then tap a speech bubble.'; }
+    };
+    sel.addEventListener('change', sync);
+    $('sbk-up').onclick = () => { const k = sel.value === 'book' ? 'BOOK' : 'COMIC'; const x = $('safina-add-close'); if (x) x.click(); pick(k); };
+    const h = $('safina-add-heading'); if (h && h.nextElementSibling) h.nextElementSibling.textContent = 'Videos, books and comics from your phone';
+    sync();
+  }
   window.SAFINA_BOOKS = { pick, open, refresh, parseEpub, parseTxt, parseComic, parsePdfBook, parsePdfComic };
-  const start = () => setTimeout(refresh, 600);
+  const start = () => { setTimeout(refresh, 600); addSheet(); };
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', start) : start();
 })();
