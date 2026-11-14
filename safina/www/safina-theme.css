@@ -1,0 +1,34 @@
+/* Safina: original look + a soft glow background, a bigger wordmark, a smaller My Library and a diamond add button. */
+:root{--ac-rgb:225,29,46}
+html,body{background:#070708!important}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(90% 34% at 50% -8%,rgba(var(--ac-rgb),.20),transparent 72%)}
+.rh .mu,.safina-library-head .mu{display:none!important}
+header,main{position:relative;z-index:1}
+header{z-index:5}
+.brand-name{font-size:40px!important;line-height:1!important}
+.brand-name::before{width:12px!important;height:12px!important}
+.safina-library-head h2{font-size:20px!important;line-height:1.1!important}
+.safina-library-head .mu{font-size:12px!important}
+
+/* add button: red circle > white outlined diamond > white plus, all centred */
+#safina-add{position:relative;width:46px!important;min-width:46px!important;height:46px!important;flex:0 0 46px!important;margin:2px 6px 2px 0;padding:0!important;border:0!important;border-radius:50%!important;
+  background:var(--ac)!important;color:transparent!important;font-size:0!important;line-height:0!important;box-shadow:0 8px 22px rgba(var(--ac-rgb),.45)!important}
+#safina-add::before{content:""!important;display:block!important;position:absolute!important;left:50%;top:50%;width:21px;height:21px;margin:-10.5px 0 0 -10.5px!important;border:2px solid #fff;border-radius:5px;box-sizing:border-box;transform:rotate(45deg)}
+#safina-add::after{content:""!important;display:block!important;position:absolute!important;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px!important;
+  background:linear-gradient(#fff,#fff) center/100% 2.5px no-repeat,linear-gradient(#fff,#fff) center/2.5px 100% no-repeat}
+#safina-add:active{transform:scale(.94)}
+
+/* selects (daily goal etc.) */
+#profile select{appearance:none;-webkit-appearance:none;background:#1f2023 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.500 6 6.500 11 1.500' fill='none' stroke='%23fff' stroke-width='1.800' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:7px 34px 7px 12px;font:700 14px "Plus Jakarta Sans",system-ui,sans-serif;margin-left:4px}
+#profile select:focus{outline:0;border-color:var(--ac);box-shadow:0 0 0 3px rgba(var(--ac-rgb),.28)}
+
+/* appearance card in Profile */
+#acc-card .sw{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+#acc-card .sw button{width:34px;height:34px;border-radius:12px;border:2px solid transparent;padding:0;cursor:pointer}
+#acc-card .sw button.on{border-color:#fff}
+#acc-card .hx{display:flex;gap:10px;align-items:center}
+#acc-card .hx input[type=color]{width:46px;height:42px;padding:2px;border-radius:12px;background:transparent;border:1px solid var(--ln)}
+#acc-card .hx input[type=text]{flex:1;min-width:0;height:42px;padding:0 12px;font:700 16px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.04em;background:#101012;color:#fff;border:1px solid var(--ln);border-radius:12px}
+#acc-card .hx button{height:42px;padding:0 16px;border-radius:12px;background:var(--ac);color:var(--on,#fff);border:0;font-weight:700}
+#acc-card .bad{color:#ff6b6b;font-size:13px;margin-top:6px;min-height:16px}
+#library .pp{display:none!important}
