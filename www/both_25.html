@@ -13,6 +13,7 @@
 <script src="safina-boot.js"></script>
 <script src="safina-match.js"></script>
 <script src="safina-tree.js"></script>
+<script src="safina-title.js"></script>
 <script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1591,7 +1592,7 @@ function rndFrame(src){if(!src)return Promise.resolve(null);if(FRC.has(src))retu
  FRC.set(src,pr);return pr}
 const RI={MOVIE:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>',TV:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/></svg>',BOOK:'<svg viewBox="0 0 24 24"><path d="M12 6c-1.5-1.2-3.5-2-6-2H3v14h3c2.5 0 4.5.8 6 2 1.5-1.2 3.5-2 6-2h3V4h-3c-2.5 0-4.5.8-6 2z"/><path d="M12 6v14"/></svg>',COMIC:'<svg viewBox="0 0 24 24"><path d="M4 4h16v12H10l-4 4v-4H4z"/><path d="M8 8.5h8M8 12h5"/></svg>'};
 let LF="all";
-function lib(){const R=$("rows");R.innerHTML="";
+function lib(){const R=$("rows");R.innerHTML="";const tc=x=>window.SafinaTitle?window.SafinaTitle.clean(x):String(x);
  const rows=ROWS.map(r=>r.slice());
  [[0,LIBD.movies],[1,LIBD.shows],[2,LIBD.books||[]],[3,LIBD.comics||[]]].forEach(z=>{if(z[1].length)rows[z[0]][4]=z[1].concat(ROWS[z[0]][4].filter(x=>x[2]))});
  const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));
@@ -1602,7 +1603,7 @@ function lib(){const R=$("rows");R.innerHTML="";
  R.append(bar);
  if(real.length&&LF=="all"){const it=real[0],h=document.createElement("div");h.className="lhero";
   h.style.background=(it.poster?"linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+it.poster+"') center/cover,":"")+"linear-gradient(135deg,"+PAL[0].split(",")[0]+",#0b0b0c)";
-  h.innerHTML="<span class='lk'>Pick up where you left off</span><h3>"+esc(it.title)+"</h3><p>"+esc(lvOf(it))+(it.sub?" · "+esc(it.sub):"")+"</p><button>▶ Play</button>";
+  h.innerHTML="<span class='lk'>Pick up where you left off</span><h3>"+esc(tc(it.title))+"</h3><p>"+esc(lvOf(it))+(it.sub?" · "+esc(it.sub):"")+"</p><button>"+(/^(Book|Comic)$/.test(it.lvl||"")?"Read":"▶ Play")+"</button>";
   if(!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(u)h.style.background="linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+u+"') center/cover,#0b0b0c"})}
   h.onclick=()=>it.open();R.append(h)}
  rows.filter(r=>LF=="all"||r[3]==LF).forEach(r=>{
@@ -1610,10 +1611,11 @@ function lib(){const R=$("rows");R.innerHTML="";
   const row=document.createElement("div");row.className="row";
   const bs=h.querySelectorAll("button");bs[0].onclick=()=>row.scrollBy({left:-360,behavior:"smooth"});bs[1].onclick=()=>row.scrollBy({left:360,behavior:"smooth"});
   r[4].forEach((x,xi)=>{const it=Array.isArray(x)?null:x,c=document.createElement("div"),
-   name=it?it.title:x[0],lvl=it?lvOf(it):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
+   name=it?tc(it.title):x[0],lvl=it?lvOf(it):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
    c.className="pc"+(on?"":" soon");
    const bg=(it&&it.poster?"url('"+it.poster+"') center/cover,":"")+"linear-gradient(160deg,"+g[0]+","+g[1]+")";
    c.innerHTML="<div class='poster' style=\"background:"+bg+"\"><span class='tag'>"+r[3]+"</span><span class='lv"+(on&&lvl!="No subs"?"":" g")+"'>"+esc(lvl)+"</span>"+(it&&it.poster?"":"<span class='pn'>"+esc(name)+"</span>")+(on?"<i class='pp'>"+(it&&it.glyph||"▶")+"</i>":"")+"</div><div class='pt'>"+esc(name)+"</div><div class='pm'>"+esc(it&&it.sub?it.sub:r[2])+" · "+esc(SAI.langInfo(LEARN()).name)+"</div>";
+   if(it){const rb=document.createElement("button");rb.className="rm";rb.type="button";rb.setAttribute("aria-label","Remove "+name);rb.innerHTML="<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3'/></svg>";rb.onclick=ev=>{ev.stopPropagation();ev.preventDefault();if(window.SAFINA_RM)window.SAFINA_RM.remove(r[3],it)};c.querySelector(".poster").append(rb)}
    if(it&&!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(!u)return;const pe=c.querySelector(".poster");if(!pe)return;pe.style.background="url('"+u+"') center/cover,linear-gradient(160deg,"+g[0]+","+g[1]+")";const pn=pe.querySelector(".pn");if(pn)pn.remove()})}
    if(on)c.onclick=()=>it?it.open():/^Import/.test(name)?(r[3]=="BOOK"||r[3]=="COMIC"?window.SAFINA_BOOKS.pick(r[3]):openImport({type:r[3]=="TV"?"tv":"movie"})):nav("watch");row.append(c)});
   R.append(h,row)})}
@@ -1713,10 +1715,21 @@ async function trBlock(el,ctx){const rt=el.querySelector(".rt"),out=el.querySele
  try{const r=await SAI.translateLine(rt.textContent,{ctx});out.dataset.done=1;out.textContent=r.t;if(r.d&&SHOWDIA()&&!rt.dataset.dia){rt.dataset.dia=1;rt.innerHTML=tapw(r.d)}}
  catch(e){out.textContent=(e&&e.message)||"Translation failed"}}
 let SOCN=0;
+function socHome(nm){
+ const rgb=h=>{h=String(h).replace("#","");return parseInt(h.slice(0,2),16)+","+parseInt(h.slice(2,4),16)+","+parseInt(h.slice(4,6),16)};
+ const by=id=>PL.find(p=>p[0]==id),yt=by("yt"),news=PL.filter(p=>p[4]=="news"),pr=PL.filter(p=>p[4]!="news"&&p[4]!="yt");
+ const chip=p=>"<i class='sico' style='background:linear-gradient(150deg,"+p[3]+")'>"+p[2]+"</i>",st=p=>"style='--pr:"+rgb(p[3].split(",")[0])+"'";
+ return "<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in "+esc(nm)+"</div></div></div>"
+ +"<div class='sl'><b>Real content</b><span>From the web</span></div>"
+ +"<div class='shero' data-a='p:yt' data-g='"+yt[2]+"' "+st(yt)+">"+chip(yt)+"<div class='sbody'><b>"+yt[1]+"</b><small>Real videos in "+esc(nm)+"</small><div class='spills'><span>Home</span><span>Shorts</span><span>Stories</span></div></div><span class='sgo'>&rsaquo;</span></div>"
+ +"<div class='sgrp'>"+news.map(p=>"<div class='srow' data-a='p:"+p[0]+"' "+st(p)+">"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>Latest headlines &middot; tap any word</small></div><span class='sgo'>&rsaquo;</span></div>").join("")+"</div>"
+ +"<div class='sl'><b>Practice feeds</b><span>Written by the AI</span></div>"
+ +"<div class='sgd'>"+pr.map(p=>"<div class='sp' data-a='p:"+p[0]+"' "+st(p)+"><span class='sbadge'>Practice</span>"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>AI-written "+esc(nm)+" posts</small></div></div>").join("")+"</div>"
+ +"<div class='snote'><i>i</i><span>TikTok, Facebook, Instagram and X do not let apps read their feeds, so these show posts the AI writes in "+esc(nm)+" for reading practice. They are always marked as practice text.</span></div>"}
 function chrome(){$("ab").style.display=P?"flex":"none";const se=$("search");P?se.style.setProperty("--ac",ACC[P]):se.style.removeProperty("--ac");$("an").innerHTML=P?"<i class='lg'>"+PL[pi()][2]+"</i>"+PL[pi()][1]:""}
 const rssCard=m=>"<div class='card'><b>"+(m=="nofeed"?"Add a news feed":"Could not load the feed")+"</b><div class='mu' style='margin:6px 0 10px'>"+(m=="nofeed"?"There is no built-in feed for this language and source. Paste an RSS address.":esc(m))+"</div><input id='rin' placeholder='https://…/rss.xml' style='width:100%;padding:10px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px'><button class='pri' data-a='rss'>Use this feed</button></div>";
 async function soc(){const S=$("soc"),nm=SAI.langInfo(LEARN()).name,my=++SOCN;
- if(!P){S.innerHTML="<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in "+esc(nm)+"</div></div></div><div class='sg'>"+PL.map(p=>"<div class='sc' data-a='p:"+p[0]+"' style='background:linear-gradient(150deg,"+p[3]+")'><i>"+p[2]+"</i><div>"+p[1]+"<small>"+(p[4]=="news"?"News":p[4]=="yt"?"Videos":"Practice posts")+"</small></div></div>").join("")+"</div><p class='mu'>YouTube and the news sources are real. TikTok, Facebook, Instagram and X do not let apps read their feeds, so those show posts the AI writes in "+esc(nm)+" for reading practice. They are marked as practice text.</p>";return}
+ if(!P){S.innerHTML=socHome(nm);return}
  const ty=PL[pi()][4];let it=[],pre="";
  if(ty=="yt")it=await API.feed(P,tab,Q);
  else if(ty=="news"){S.innerHTML="<p class='mu'>Loading…</p>";const r=await newsFetch(P);if(my!=SOCN)return;if(r.err){S.innerHTML=rssCard(r.err);return}it=Q?r.items.filter(x=>x.ar.includes(Q)):r.items}
@@ -1981,6 +1994,7 @@ render();
 <script src="safina-film.js"></script>
 <script src="safina-prep-ui.js"></script>
 <script src="safina-books.js"></script>
+<script src="safina-remove.js"></script>
 <script src="safina-color.js"></script>
 <script src="safina-library.js"></script>
 <script>

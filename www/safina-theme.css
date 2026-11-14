@@ -34,3 +34,66 @@ header{z-index:5}
 #acc-card .bad{color:#ff6b6b;font-size:13px;margin-top:6px;min-height:16px}
 #library .pp{display:none!important}
 .safina-add-panel{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}
+
+/* ===== long titles can never stretch a card ===== */
+#library .row{max-width:100%}
+#library .pc{flex:0 0 150px;width:150px;min-width:0;max-width:150px}
+#library .poster{min-width:0;max-width:100%;overflow:hidden;padding:14px 12px}
+#library .poster .pn{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;line-clamp:5;overflow:hidden;min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;font-size:19px;line-height:1.12}
+#library .pt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+#library .pm{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#library .tag,#library .lv{max-width:calc(50% - 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lhero{min-width:0;max-width:100%}
+.lhero h3{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
+.lhero p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* remove button on every library card */
+#library .poster .rm{position:absolute;right:8px;bottom:8px;z-index:2;width:32px;height:32px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);cursor:pointer;-webkit-tap-highlight-color:transparent}
+#library .poster .rm svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#library .poster .rm:active{background:var(--ac)}
+
+/* ===== Socials ===== */
+#soc .sl{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:24px 2px 10px}
+#soc .sl b{font:800 12px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#c9cbd2}
+#soc .sl span{font-size:12px;color:var(--mu)}
+#soc .sico{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;flex:none;font:800 20px/1 "Plus Jakarta Sans",system-ui,sans-serif;font-style:normal;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 6px 14px rgba(0,0,0,.35)}
+#soc .sbody{min-width:0;flex:1}
+#soc .sbody b{display:block;font:800 17px/1.2 "Plus Jakarta Sans",system-ui,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#soc .sbody small{display:block;margin-top:3px;font:600 12.5px/1.35 "Plus Jakarta Sans",system-ui,sans-serif;color:var(--mu)}
+#soc .sgo{flex:none;font:400 28px/1 system-ui,sans-serif;color:rgba(255,255,255,.34)}
+#soc .shero,#soc .srow,#soc .sp{-webkit-tap-highlight-color:transparent;transition:transform .15s}
+#soc .shero:active,#soc .sp:active{transform:scale(.985)}
+#soc .shero{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:20px 18px;min-height:132px;border-radius:26px;cursor:pointer;border:1px solid rgba(255,255,255,.08);background:radial-gradient(120% 150% at 100% 0%,rgba(var(--pr),.34),transparent 62%),linear-gradient(160deg,#17181b,#0c0c0e)}
+#soc .shero::after{content:attr(data-g);position:absolute;right:-6px;bottom:-40px;font:900 160px/1 "Plus Jakarta Sans",system-ui,sans-serif;color:rgba(var(--pr),.09);pointer-events:none}
+#soc .shero>*{position:relative;z-index:1}
+#soc .shero .sico{width:54px;height:54px;border-radius:18px;font-size:24px}
+#soc .spills{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+#soc .spills span{font:700 11px/1 "Plus Jakarta Sans",system-ui,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.1);color:#ececf0}
+#soc .sgrp{background:#121316;border:1px solid rgba(255,255,255,.07);border-radius:24px;overflow:hidden;margin-top:12px}
+#soc .srow{display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer}
+#soc .srow+.srow{border-top:1px solid rgba(255,255,255,.06)}
+#soc .srow:active{background:rgba(255,255,255,.04)}
+#soc .sgd{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#soc .sp{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:18px;min-height:142px;padding:16px;border-radius:24px;cursor:pointer;background:radial-gradient(90% 80% at 0% 0%,rgba(var(--pr),.26),transparent 70%),#121316;border:1px solid rgba(255,255,255,.07)}
+#soc .sp .sbody{flex:none}
+#soc .sp .sbody small{margin-top:4px}
+#soc .sbadge{position:absolute;top:14px;right:14px;font:800 9.5px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.09);color:#cfd2d9}
+#soc .snote{display:flex;gap:12px;align-items:flex-start;margin:20px 2px 8px;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:12.5px;line-height:1.55;color:var(--mu)}
+#soc .snote i{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid #8b8f99;display:grid;place-items:center;font:700 12px/1 Georgia,serif;color:#8b8f99;font-style:italic;margin-top:1px}
+
+/* cards inside a social feed */
+#soc .card{background:#121316;border:1px solid rgba(255,255,255,.07);border-radius:22px;padding:18px}
+#soc .nr{padding:12px;border-radius:20px;background:#121316;border:1px solid rgba(255,255,255,.06);align-items:center}
+#soc .nr .th{flex:0 0 112px;border-radius:14px}
+#soc .nr .rt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+#soc .vi .th{border-radius:20px}
+#soc .vi h2.rt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+
+/* a long title inside a toast must never run off the screen */
+#toast{max-width:calc(100% - 32px);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+/* "Pick up where you left off" label: quiet pill, not the link style */
+.lhero .lk{display:inline-block;align-self:flex-start;padding:6px 11px;border:0;border-radius:999px;background:rgba(0,0,0,.38);color:#fff;opacity:1}
+
+#soc .rh+.sl{margin-top:8px}
+#ab{background:rgba(7,7,8,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding-bottom:12px}
+#soc .card>.mu:first-child{display:inline-block;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.09);color:#cfd2d9;font:800 10.5px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px!important}

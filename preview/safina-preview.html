@@ -6,8 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="icon-192.png">
-<script>/* safina-trace.js */
-/* Safina crash trace.
+<script>/* Safina crash trace.
  * A crash that closes the whole app cannot be caught from JavaScript, so this keeps a small, always-saved note of what the app is
  * doing (heavy jobs: the on-phone AI, the on-phone translator, preparing a film). If the app closes while one of them is running,
  * the next start knows which one, switches that part off so the app cannot crash again the same way, and tells the person.
@@ -82,10 +81,8 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(banner, 800)); else setTimeout(banner, 800);
 })();
-
 </script>
-<script>/* safina-ai.js */
-/* Safina AI core: providers, accounts, limit handling, conversation handoff, and the translation pipeline.
+<script>/* Safina AI core: providers, accounts, limit handling, conversation handoff, and the translation pipeline.
  *
  *   translation  =  machine translation draft (on-device Helsinki-NLP model or a translation API)
  *                   -> AI pass (fix mistakes, meaning in context, add diacritics) -> user
@@ -855,10 +852,8 @@
 
   return { create, LANGS, PROVIDERS, AIError, classify, parseLooseJSON, alignDiacritics, stripMarks, asTurns, langInfo, isMT, AR_RE };
 });
-
 </script>
-<script>/* safina-models.js */
-/* Safina model manager: downloads translator packs (one per language pair) and the on-phone AI into app
+<script>/* Safina model manager: downloads translator packs (one per language pair) and the on-phone AI into app
  * storage after install, so the APK itself stays small.
  *
  *   translator pack  = Helsinki-NLP opus-mt ONNX files for one direction, e.g. "ar-en" or "en-ar"
@@ -1168,10 +1163,8 @@
     isNative: () => E.native(), onCellular: () => E.onCellular(), hasLlmEngine: () => !!E.Llm()
   };
 });
-
 </script>
-<script>/* safina-brain.js */
-/* Safina learner brain.
+<script>/* Safina learner brain.
  *
  * It watches what the learner does while watching, works out which words they know, judges whether each sentence was
  * understood, and has the AI (on-phone model or an API account, whichever the AI engine picks) assess the lines and write
@@ -1797,10 +1790,8 @@
 
   return { create, norm, tokens, lineKey, LEVELS };
 });
-
 </script>
-<script>/* safina-boot.js */
-/* Creates the one shared engine (window.SAI) before the page's own script runs.
+<script>/* Creates the one shared engine (window.SAI) before the page's own script runs.
  * Network calls go through Capacitor's native HTTP when running in the app: that avoids the browser's CORS rules,
  * which some AI providers do not satisfy for a WebView. In a plain browser it falls back to fetch. */
 (function () {
@@ -1873,10 +1864,504 @@
   });
   M.verify().catch(() => { /* not in the app, nothing to verify */ });
 })();
-
 </script>
+<script>/* Safina filename parser + media/subtitle matcher.
+ * Pure and deterministic. Loads as a classic <script> (window.SafinaMatch) and as a CommonJS module in Node tests.
+ * Nothing here guesses silently: anything not uniquely identifiable is reported with a status and a reason. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.SafinaMatch = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
 
+  const VIDEO = /\.(mp4|mkv|avi|mov|webm|m4v|ts|wmv|flv)$/i;
+  const SUB = /\.(srt|vtt)$/i;
+  const IMAGE = /\.(jpe?g|png|webp|gif)$/i;
+  const TEXT = /\.txt$/i;
+  const BOOK = /\.(pdf|epub)$/i;
+  const COMIC = /\.(cbz|cbr|zip)$/i;
 
+  function fileKind(name) {
+    if (VIDEO.test(name)) return 'video';
+    if (SUB.test(name)) return 'subtitle';
+    if (IMAGE.test(name)) return 'image';
+    if (TEXT.test(name)) return 'text';
+    if (BOOK.test(name)) return 'book';
+    if (COMIC.test(name)) return 'comic';
+    return 'other';
+  }
+
+  const baseName = p => String(p).replace(/\\/g, '/').split('/').pop();
+  const dirParts = p => String(p).replace(/\\/g, '/').split('/').slice(0, -1).filter(Boolean);
+  const stripExt = n => n.replace(/\.[A-Za-z0-9]{1,5}$/, '');
+
+  const LANGS = { ar: 'ar', ara: 'ar', arabic: 'ar', en: 'en', eng: 'en', english: 'en' };
+  const LANG_TAIL = /[ ._\-\[(]+(ar|ara|arabic|en|eng|english)(?:[ ._\-](?:hi|sdh|cc|forced))?[\])]*$/i;
+
+  const TAG_CUT = /(?:^|\s)(?:480p|576p|720p|1080p|1440p|2160p|4k|uhd|bluray|blu ray|bdrip|brrip|webrip|web dl|webdl|web|hdtv|dvdrip|hdrip|x264|x265|h264|h265|hevc|avc|aac|ac3|dts|ddp5|10bit|remux|proper|repack|extended|unrated|multi|dual)(?=\s|$)/i;
+
+  const norm = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9؀-ۿ]+/g, ' ').trim();
+
+  function cleanTitle(s) {
+    let t = String(s || '').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g, ' ');
+    const cut = t.search(TAG_CUT);
+    if (cut > 0) t = t.slice(0, cut);
+    t = t.replace(/\s+(?:19|20)\d{2}\s*$/, '');                 // trailing year, only after other words
+    return t.replace(/[\s\-–—:,;]+$/g, '').replace(/^[\s\-–—:,;]+/, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // season, episode patterns in priority order; each returns [season|null, episode, index, endEpisode|null]
+  const PATTERNS = [
+    // S01E02, S1E2, S01 E02, S01-E02, S01.E02, S01E02E03, S01E02-E03 (multi-episode needs an explicit E)
+    [/(?<![a-z0-9])s(\d{1,2})\s*[-x ]?\s*e(?:p)?\s*(\d{1,3})(?:\s*-?\s*e(\d{1,3}))?(?![0-9])/i, m => [+m[1], +m[2], m[3] ? +m[3] : null]],
+    // Season 1 Episode 2 / Season 1 Ep 2 / Season 1 E2
+    [/(?<![a-z0-9])season\s*(\d{1,2})\s*[-,]?\s*(?:episode|ep|e)\s*(\d{1,3})(?![0-9])/i, m => [+m[1], +m[2], null]],
+    // 2nd Season Episode 3
+    [/(?<![a-z0-9])(\d{1,2})(?:st|nd|rd|th)\s+season\s+(?:episode|ep|e)\s*(\d{1,3})(?![0-9])/i, m => [+m[1], +m[2], null]],
+    // 1x02 / 1x2 (never resolutions such as 1920x1080: the lookbehind forbids a digit before the first number)
+    [/(?<![a-z0-9])(\d{1,2})x(\d{1,3})(?![a-z0-9])/i, m => [+m[1], +m[2], null]],
+    // Episode 2 / Ep 2 / Ep.2 / E02 (season unknown)
+    [/(?<![a-z0-9])(?:episodes?|ep)\s*(\d{1,3})(?![a-z0-9])/i, m => [null, +m[1], null]],
+    [/(?<![a-z0-9])e(\d{1,3})(?![a-z0-9])/i, m => [null, +m[1], null]]
+  ];
+  const SEASON_ONLY = /(?<![a-z0-9])season\s*(\d{1,2})(?![0-9])/i;
+
+  function seasonFromFolders(path) {
+    const dirs = dirParts(path);
+    for (let i = dirs.length - 1; i >= 0; i--) {
+      const d = dirs[i].trim();
+      let m = d.match(/^season[\s._\-]*(\d{1,2})$/i) || d.match(/^s(\d{1,2})$/i) || d.match(/^series[\s._\-]*(\d{1,2})$/i);
+      if (m) return +m[1];
+    }
+    return null;
+  }
+
+  function parseName(nameOrPath) {
+    const raw = String(nameOrPath);
+    const file = baseName(raw);
+    const kind = fileKind(file);
+    let stem = stripExt(file);
+    let lang = null;
+    if (kind === 'subtitle') {
+      // strip up to two trailing language/flag tags (".ar.sdh.srt")
+      for (let k = 0; k < 2; k++) {
+        const m = stem.match(LANG_TAIL);
+        if (!m) break;
+        if (!lang) lang = LANGS[m[1].toLowerCase()];
+        stem = stem.slice(0, m.index);
+      }
+    }
+    const text = stem.replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
+    let season = null, episode = null, episodeEnd = null, idx = -1;
+    for (const [re, pick] of PATTERNS) {
+      const m = re.exec(text);
+      if (m) { [season, episode, episodeEnd] = pick(m); idx = m.index; break; }
+    }
+    let seasonSource = season != null ? 'name' : null;
+    if (episode == null) {
+      const so = SEASON_ONLY.exec(text);
+      if (so) { season = +so[1]; idx = so.index; seasonSource = 'name'; }
+    }
+    if (season == null && episode != null) {
+      const f = seasonFromFolders(raw);
+      if (f != null) { season = f; seasonSource = 'folder'; }
+    }
+    const series = cleanTitle(idx >= 0 ? text.slice(0, idx) : text);
+    return {
+      raw, file, kind, lang, series, seriesKey: norm(series),
+      season, episode, episodeEnd, seasonSource,
+      isEpisode: episode != null,
+      titleKey: norm(cleanTitle(text))
+    };
+  }
+
+  // Arabic vs Latin script, from subtitle text
+  function detectLanguage(text) {
+    const sample = String(text || '').replace(/<[^>]+>|\d+|[:\->,.]/g, ' ').slice(0, 20000);
+    const ar = (sample.match(/[؀-ۿ]/g) || []).length;
+    const la = (sample.match(/[A-Za-z]/g) || []).length;
+    if (ar + la < 10) return null;
+    return ar >= la ? 'ar' : 'en';
+  }
+
+  const compat = (a, b) => !a || !b || a === b || a.includes(b) || b.includes(a);
+
+  function dominantSeries(parsed) {
+    const c = new Map();
+    parsed.forEach(p => { if (p.seriesKey) c.set(p.seriesKey, (c.get(p.seriesKey) || 0) + 1); });
+    let best = '', n = 0;
+    [...c.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => { if (v > n) { best = k; n = v; } });
+    return best;
+  }
+
+  const STATUS_ORDER = ['matched', 'missing-subtitle', 'missing-media', 'ambiguous', 'duplicate', 'review'];
+  function tally(list) {
+    const c = {};
+    STATUS_ORDER.forEach(k => { const n = list.filter(x => x.status === k).length; if (n) c[k] = n; });
+    return c;
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+
+  /**
+   * entries: [{id, name, path?, lang?}]   (lang = language detected from content, optional)
+   * opts:    {type:'tv'|'movie', overrides:{[id]:{season,episode}}, choices:{[choiceKey]:id}}
+   */
+  function buildTree(entries, opts) {
+    opts = opts || {};
+    const overrides = opts.overrides || {};
+    const choices = opts.choices || {};
+    const items = entries.map(e => {
+      const p = parseName(e.path || e.name);
+      const o = overrides[e.id];
+      if (o) {
+        if (o.season !== undefined) { p.season = o.season; p.seasonSource = o.season == null ? null : 'user'; }
+        if (o.episode !== undefined) { p.episode = o.episode; p.isEpisode = o.episode != null; }
+      }
+      return { id: e.id, name: e.name, size: e.size, kind: p.kind, p, lang: e.lang || p.lang || null };
+    });
+    // Determinism: the tree must not depend on the order the picker returned the files in.
+    // Plain code-unit comparison (not localeCompare) so every device gives the same result.
+    items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const videos = items.filter(i => i.kind === 'video');
+    const subs = items.filter(i => i.kind === 'subtitle');
+    const others = items.filter(i => !['video', 'subtitle'].includes(i.kind));
+    return opts.type === 'movie' ? movieTree(videos, subs, others, choices) : tvTree(videos, subs, others, choices);
+  }
+
+  function tvTree(videos, subs, others, choices) {
+    const eps = [...videos, ...subs];
+    const dom = dominantSeries(eps.map(i => i.p).filter(p => p.isEpisode));
+    const foreign = [], unparsed = [], pool = [];
+    eps.forEach(i => {
+      if (!i.p.isEpisode) unparsed.push({ item: i, reason: i.p.season != null ? 'Season pack / no episode number' : 'No season or episode number found' });
+      else if (!compat(i.p.seriesKey, dom)) foreign.push({ item: i, reason: 'Filename names a different series: "' + i.p.series + '"' });
+      else pool.push(i);
+    });
+
+    const knownSeasonsFor = new Map();            // episode number -> Set(seasons)
+    pool.forEach(i => {
+      if (i.p.season == null) return;
+      if (!knownSeasonsFor.has(i.p.episode)) knownSeasonsFor.set(i.p.episode, new Set());
+      knownSeasonsFor.get(i.p.episode).add(i.p.season);
+    });
+
+    const nodes = new Map();
+    const node = (season, episode) => {
+      const key = (season == null ? '?' : season) + ':' + episode;
+      if (!nodes.has(key)) nodes.set(key, { key, season, episode, videos: [], subs: [], notes: [], inferred: false });
+      return nodes.get(key);
+    };
+    pool.forEach(i => {
+      let s = i.p.season, inferred = false;
+      const n0 = [];
+      if (s == null) {
+        const cand = knownSeasonsFor.get(i.p.episode);
+        if (cand && cand.size === 1) { s = [...cand][0]; inferred = true; }
+        else if (cand && cand.size > 1) n0.push('Episode ' + i.p.episode + ' exists in seasons ' + [...cand].sort((a, b) => a - b).join(', ') + ' - choose the season');
+      }
+      const nd = node(s, i.p.episode);
+      if (inferred) { nd.inferred = true; nd.notes.push('Season taken from other files with the same episode number: ' + i.name); }
+      n0.forEach(t => nd.notes.push(t));
+      (i.kind === 'video' ? nd.videos : nd.subs).push(i);
+    });
+
+    const list = [...nodes.values()];
+    list.forEach(nd => {
+      // user choices resolve duplicates / ambiguity explicitly
+      const vChoice = choices[nd.key + '|video'];
+      if (nd.videos.length > 1 && vChoice != null) {
+        const pick = nd.videos.find(v => v.id === vChoice);
+        if (pick) { nd.unusedVideos = nd.videos.filter(v => v !== pick); nd.videos = [pick]; }
+      }
+      const byLang = new Map();
+      nd.subs.forEach(s => { const l = s.lang || 'und'; if (!byLang.has(l)) byLang.set(l, []); byLang.get(l).push(s); });
+      const kept = [], conflicts = [];
+      [...byLang.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([lang, arr]) => {
+        if (arr.length === 1) { kept.push(arr[0]); return; }
+        const pick = arr.find(s => s.id === choices[nd.key + '|sub|' + lang]);
+        if (pick) { kept.push(pick); (nd.unusedSubs = nd.unusedSubs || []).push(...arr.filter(s => s !== pick)); }
+        else { conflicts.push({ lang, candidates: arr }); }
+      });
+      nd.subs = kept; nd.conflicts = conflicts;
+      nd.videos.sort((a, b) => a.name.localeCompare(b.name));
+      nd.subs.sort((a, b) => a.name.localeCompare(b.name));
+
+      if (nd.season == null) { nd.status = 'review'; nd.notes.push('Season unknown - not guessed'); }
+      else if (nd.videos.length > 1) { nd.status = 'duplicate'; nd.notes.push(nd.videos.length + ' video files for this episode'); }
+      else if (conflicts.length) { nd.status = 'ambiguous'; conflicts.forEach(c => nd.notes.push(c.candidates.length + ' ' + (c.lang === 'und' ? '' : c.lang.toUpperCase() + ' ') + 'subtitles for this episode')); }
+      else if (nd.inferred) nd.status = 'review';
+      else if (!nd.videos.length) nd.status = 'missing-media';
+      else if (!nd.subs.length) nd.status = 'missing-subtitle';
+      else nd.status = 'matched';
+      if (nd.status === 'review' && !nd.videos.length && nd.season != null) nd.notes.push('No video for this episode');
+    });
+
+    const bySeason = new Map();
+    list.forEach(nd => {
+      const k = nd.season == null ? '?' : nd.season;
+      if (!bySeason.has(k)) bySeason.set(k, []);
+      bySeason.get(k).push(nd);
+    });
+    const seasons = [...bySeason.entries()].map(([k, arr]) => ({
+      season: k === '?' ? null : k,
+      label: k === '?' ? 'Season unknown' : 'Season ' + pad(k),
+      episodes: arr.sort((a, b) => a.episode - b.episode)
+    })).sort((a, b) => (a.season == null) - (b.season == null) || (a.season - b.season));
+
+    const counts = tally(list);
+    const names = eps.filter(i => i.p.isEpisode && i.p.seriesKey === dom && i.p.series).map(i => i.p.series).sort();
+    return { type: 'tv', series: dom, seriesTitle: names[0] || '', seasons, unparsed, foreign, others, counts };
+  }
+
+  function movieTree(videos, subs, others, choices) {
+    const movies = videos.map(v => ({ key: 'm:' + v.id, video: v, subs: [], notes: [] }));
+    const unmatched = [];
+    subs.forEach(s => {
+      const sk = s.p.titleKey;
+      const hits = movies.filter(m => m.video.p.titleKey === sk || (sk && m.video.p.titleKey.startsWith(sk)) || (sk && sk.startsWith(m.video.p.titleKey) && m.video.p.titleKey));
+      if (hits.length === 1) hits[0].subs.push(s);
+      else if (!hits.length && movies.length === 1 && compat(s.p.titleKey, movies[0].video.p.titleKey)) movies[0].subs.push(s);
+      else unmatched.push({ item: s, reason: hits.length > 1 ? 'Matches several movies' : 'No video with a matching title' });
+    });
+    movies.forEach(m => {
+      const byLang = new Map();
+      m.subs.forEach(s => { const l = s.lang || 'und'; if (!byLang.has(l)) byLang.set(l, []); byLang.get(l).push(s); });
+      const kept = []; m.conflicts = [];
+      [...byLang.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([lang, arr]) => {
+        if (arr.length === 1) kept.push(arr[0]);
+        else {
+          const pick = arr.find(s => s.id === choices[m.key + '|sub|' + lang]);
+          if (pick) kept.push(pick); else m.conflicts.push({ lang, candidates: arr });
+        }
+      });
+      m.subs = kept;
+      m.status = m.conflicts.length ? 'ambiguous' : !m.subs.length ? 'missing-subtitle' : 'matched';
+      if (m.conflicts.length) m.notes.push('Several subtitles of the same language');
+    });
+    movies.sort((a, b) => a.video.name.localeCompare(b.video.name));
+    const counts = tally(movies);
+    return { type: 'movie', seriesTitle: movies.length === 1 ? movies[0].video.p.series : '', movies, unmatched, others, counts, unparsed: [], foreign: [], seasons: [] };
+  }
+
+  return { parseName, fileKind, detectLanguage, buildTree, norm, seasonFromFolders };
+});
+</script>
+<script>/* Safina import tree: renders a SafinaMatch tree (series > seasons > episodes > files) as HTML.
+ * Pure functions (state in, HTML string out) so they can be tested in Node.
+ * Used twice: as the import review (checkboxes) and, read-only, as the episode list of a library show. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.SafinaTree = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = n => String(n).padStart(2, '0');
+
+  const BADGE = {
+    matched: ['ok', '✓ Matched'],
+    'missing-subtitle': ['warn', 'No subtitle'],
+    'missing-media': ['bad', 'No video'],
+    ambiguous: ['warn', 'Choose subtitle'],
+    duplicate: ['warn', 'Duplicate video'],
+    review: ['warn', 'Needs review']
+  };
+
+  // movies are rendered with the same row component as episodes
+  function movieNode(m) {
+    return { key: m.key, label: m.video.name, videos: [m.video], subs: m.subs, notes: m.notes || [], status: m.status, conflicts: m.conflicts || [], season: 0, episode: 0, isMovie: true };
+  }
+
+  function isSelectable(nd) {
+    if (nd.status === 'matched' || nd.status === 'missing-subtitle') return nd.videos.length === 1;
+    if (nd.status === 'review') return nd.season != null && nd.videos.length === 1;
+    return false;
+  }
+  function isChecked(nd, sel) {
+    if (!isSelectable(nd)) return false;
+    if (sel && sel.has(nd.key)) return !!sel.get(nd.key);
+    return nd.status === 'matched' || nd.status === 'missing-subtitle';
+  }
+  function allNodes(tree) {
+    if (tree.type === 'movie') return tree.movies.map(movieNode);
+    const out = [];
+    tree.seasons.forEach(s => s.episodes.forEach(e => out.push(e)));
+    return out;
+  }
+  function selection(tree, sel) { return allNodes(tree).filter(nd => isChecked(nd, sel)); }
+
+  const lang = l => (l && l !== 'und') ? '<span class="ttag">' + esc(String(l).toUpperCase()) + '</span>' : '<span class="ttag ttag-u">?</span>';
+  const fline = (icon, name, extra) => '<div class="tf"><span class="ti">' + icon + '</span><span class="tn-name">' + esc(name) + '</span>' + (extra || '') + '</div>';
+
+  function toggleBtn(id, open) {
+    return '<button type="button" class="tg" data-toggle="' + esc(id) + '" aria-expanded="' + (open ? 'true' : 'false') + '" aria-label="' + (open ? 'Collapse' : 'Expand') + '">' + (open ? '▾' : '▸') + '</button>';
+  }
+  const isOpen = (ui, id, dflt) => ui.open && ui.open.has(id) ? ui.open.get(id) : dflt;
+
+  function episodeHtml(nd, ui) {
+    const id = 'ep:' + nd.key;
+    const open = isOpen(ui, id, nd.status !== 'matched');
+    const [cls, label] = BADGE[nd.status] || ['warn', nd.status];
+    const checked = isChecked(nd, ui.sel), canPick = isSelectable(nd);
+    const title = nd.isMovie ? esc(nd.label) : 'Episode ' + pad(nd.episode);
+    let h = '<div class="te st-' + cls + '" data-status="' + esc(nd.status) + '"><div class="tr">';
+    if (!ui.readOnly) h += '<input type="checkbox" class="tc" data-pick="' + esc(nd.key) + '"' + (checked ? ' checked' : '') + (canPick ? '' : ' disabled') + ' aria-label="Import ' + title + '">';
+    h += toggleBtn(id, open) + '<span class="tl">' + title + '</span><span class="bdg b-' + cls + '">' + esc(label) + '</span>';
+    // Collapsed rows still show which subtitle languages were attached, so a long list can be reviewed at a glance.
+    if (!open) h += nd.subs.map(s => lang(s.lang)).join('');
+    if (ui.readOnly && nd.videos.length === 1 && ui.playable) h += '<button type="button" class="tplay" data-play="' + esc(nd.key) + '">▶ Play</button>';
+    h += '</div>';
+    if (open) {
+      h += '<div class="tk">';
+      nd.videos.forEach(v => { h += fline('▶', v.name); });
+      if (!nd.videos.length) h += '<div class="tf tmiss">No video file for this episode</div>';
+      nd.subs.forEach(s => { h += fline('≣', s.name, lang(s.lang)); });
+      if (!nd.subs.length && nd.videos.length && !(nd.conflicts || []).length) h += '<div class="tf tmiss">No subtitle file for this episode</div>';
+      (nd.unusedSubs || []).forEach(s => { h += '<div class="tf tmiss">Not used: ' + esc(s.name) + '</div>'; });
+      (nd.unusedVideos || []).forEach(s => { h += '<div class="tf tmiss">Not used: ' + esc(s.name) + '</div>'; });
+      if (!ui.readOnly) {
+        if (nd.videos.length > 1) {
+          h += '<label class="tsel">Which video?<select data-choice="' + esc(nd.key) + '|video"><option value="">Choose one…</option>' +
+            nd.videos.map(v => '<option value="' + esc(v.id) + '">' + esc(v.name) + '</option>').join('') + '</select></label>';
+        }
+        (nd.conflicts || []).forEach(c => {
+          h += '<label class="tsel">Which ' + (c.lang === 'und' ? '' : esc(c.lang.toUpperCase()) + ' ') + 'subtitle?<select data-choice="' + esc(nd.key) + '|sub|' + esc(c.lang) + '"><option value="">Choose one…</option>' +
+            c.candidates.map(s => '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>').join('') + '</select></label>';
+        });
+      }
+      (nd.notes || []).forEach(n => { h += '<div class="tnote">' + esc(n) + '</div>'; });
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function seasonHtml(s, ui) {
+    const id = 'se:' + (s.season == null ? '?' : s.season);
+    const open = isOpen(ui, id, true);
+    const n = s.episodes.length, ok = s.episodes.filter(e => e.status === 'matched').length;
+    let h = '<div class="ts"><div class="tr">' + toggleBtn(id, open) + '<span class="tl">' + esc(s.label) + '</span><span class="tcount">' + n + ' episode' + (n === 1 ? '' : 's') + ' · ' + ok + ' matched</span></div>';
+    if (open) {
+      h += '<div class="tk">';
+      if (s.season == null && !ui.readOnly) {
+        h += '<div class="tfix">These files have no season in their name. Nothing was guessed. Set the season: ' +
+          '<input type="number" inputmode="numeric" min="1" max="99" id="safina-season-fix" placeholder="Season">' +
+          '<button type="button" data-apply-season="1">Apply</button></div>';
+      }
+      h += s.episodes.map(e => episodeHtml(e, ui)).join('') + '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function listHtml(id, title, rows, ui, extraFn) {
+    if (!rows.length) return '';
+    const open = isOpen(ui, id, true);
+    let h = '<div class="ts"><div class="tr">' + toggleBtn(id, open) + '<span class="tl">' + esc(title) + '</span><span class="tcount">' + rows.length + '</span></div>';
+    if (open) h += '<div class="tk">' + rows.map(r => extraFn(r)).join('') + '</div>';
+    return h + '</div>';
+  }
+
+  function placeRow(r, ui) {
+    const it = r.item;
+    let h = '<div class="tplace">' + fline(it.kind === 'video' ? '▶' : '≣', it.name, it.kind === 'subtitle' ? lang(it.lang) : '') +
+      '<div class="tnote">' + esc(r.reason) + '</div>';
+    if (!ui.readOnly && r.placeable) {
+      h += '<div class="tfix">Place it: season <input type="number" min="1" max="99" data-place-season="' + esc(it.id) + '"> episode <input type="number" min="1" max="999" data-place-episode="' + esc(it.id) + '"> <button type="button" data-place="' + esc(it.id) + '">Place</button></div>';
+    }
+    return h + '</div>';
+  }
+
+  function render(tree, ui) {
+    ui = ui || {};
+    const nodes = allNodes(tree);
+    const counts = tree.counts || {};
+    let h = '';
+    const rootId = 'root';
+    const rootOpen = isOpen(ui, rootId, true);
+    const summary = ui.readOnly ? nodes.length + ' episode' + (nodes.length === 1 ? '' : 's') : Object.keys(counts).map(k => (counts[k] + ' ' + (BADGE[k] ? BADGE[k][1].replace('✓ ', '') : k).toLowerCase())).join(' · ');
+    h += '<div class="ttree"><div class="tr troot">' + toggleBtn(rootId, rootOpen) + '<span class="tl">' + esc(ui.title || tree.series || 'Untitled') + '</span><span class="tcount">' + esc(summary || 'nothing to import') + '</span></div>';
+    if (rootOpen) {
+      h += '<div class="tk">';
+      if (!ui.readOnly && nodes.length) {
+        h += '<div class="tquick"><button type="button" data-quick="all">Select all</button><button type="button" data-quick="none">None</button><button type="button" data-quick="matched">Only matched</button></div>';
+      }
+      if (tree.type === 'movie') h += nodes.map(n => episodeHtml(n, ui)).join('');
+      else h += tree.seasons.map(s => seasonHtml(s, ui)).join('');
+      const placeable = r => Object.assign({ placeable: true }, r);
+      h += listHtml('un', 'Not placed in the tree', (tree.unparsed || []).map(placeable), ui, r => placeRow(r, ui));
+      h += listHtml('fo', 'Different series (not matched)', tree.foreign || [], ui, r => placeRow(r, ui));
+      h += listHtml('um', 'Subtitles without a video', tree.unmatched || [], ui, r => placeRow(r, ui));
+      h += listHtml('ig', 'Ignored files', ui.ignored || [], ui, r => '<div class="tplace">' + fline('•', r.name) + '<div class="tnote">' + esc(r.reason) + '</div></div>');
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  return { render, isSelectable, isChecked, selection, allNodes, esc };
+});
+</script>
+<script>/* Safina title cleaner: turns messy file names into short, readable titles.
+ *   "The Art of War -- Sun Tzu -- 2009 -- Penguin -- 9780140455519 -- 3f2a9c…32hex -- Anna's Archive.epub"  ->  "The Art of War"
+ *   "Dune_(Z-Library).pdf"                                                                                    ->  "Dune"
+ *   "Movie.Name.2019.1080p.BluRay.x264-GROUP.mkv"                                                              ->  "Movie Name 2019"
+ * It never throws, never returns an empty string, and never returns more than `max` characters.
+ * Used for display only, so the original file is never renamed. */
+(function (root) {
+  'use strict';
+  var MAX = 60;
+  var EXT = /\.(epub|pdf|txt|docx?|html?|md|cbz|cbr|zip|mkv|mp4|m4v|avi|mov|webm|srt|vtt|ass|ssa)$/i;
+  var JUNK_WORD = /(anna['’]?s[\s_-]*archive|z-?lib(?:rary)?|libgen|\bb-?ok\b|\b1lib\b|\bisbn\b|\bmd5\b)/i;
+  var JUNK_BRACKET = /(anna['’]?s[\s_-]*archive|z-?lib(?:rary)?|libgen|\bb-?ok\b|\b1lib\b|\bisbn\b|\bmd5\b|retail|true[\s_-]*pdf|\bocr(?:ed)?\b|\bedition\b|\bed\.)/i;
+  var HASH = /\b[a-f0-9]{20,}\b/i;
+  var LONG_NUM = /\b(?:97[89][\d-]{9,14}|\d{10,13}[\dXx]?)\b/;
+  // release tags in film file names: stop reading the title at the first of these
+  var RELEASE = /[\s._-](?:2160p|1080p|720p|480p|4k|uhd|blu-?ray|bdrip|brrip|web-?dl|webrip|hdtv|dvdrip|hdrip|x26[45]|h\.?26[45]|hevc|xvid|aac|ac3|dts|remux|proper|repack|extended|unrated)\b/i;
+
+  function cut(t, max) {
+    if (t.length <= max) return t;
+    var s = t.slice(0, max - 1), i = s.lastIndexOf(' ');
+    if (i >= Math.floor(max * 0.5)) s = s.slice(0, i);
+    return s.replace(/[\s\-–—,;:|.(\[]+$/, '') + '…';
+  }
+
+  function clean(input, max) {
+    max = max > 4 ? max : MAX;
+    var raw = input == null ? '' : String(input);
+    try {
+      var t = raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(EXT, '').trim();
+      // "A -- B -- C" is how Anna's Archive and similar sites join fields: the title is the first field
+      if (/\s--\s/.test(t)) {
+        var f = t.split(/\s--\s/).map(function (x) { return x.trim(); }).filter(Boolean);
+        if (f.length) t = f[0];
+      } else if (/\s[-–—]\s.*\s[-–—]\s/.test(t) && (JUNK_WORD.test(t) || HASH.test(t) || LONG_NUM.test(t))) {
+        var g = t.split(/\s[-–—]\s/).map(function (x) { return x.trim(); }).filter(Boolean);
+        if (g.length) t = g[0];
+      }
+      // dots / underscores used as spaces (not decimals, not initials like "J.K.")
+      if (!/\s/.test(t) && /[._]/.test(t)) t = t.replace(/[._]+/g, ' ');
+      t = t.replace(/_+/g, ' ');
+      // bracketed junk: "(Z-Library)", "[isbn 978…]", "(2nd Edition, Retail)"
+      t = t.replace(/\s*[\[(][^\])]*[\])]/g, function (m) { return JUNK_BRACKET.test(m) || HASH.test(m) || LONG_NUM.test(m) ? '' : m; });
+      // anything after a hash, an ISBN, or a known site name is metadata
+      var m1 = t.search(HASH); if (m1 > 0) t = t.slice(0, m1);
+      var m2 = t.search(LONG_NUM); if (m2 > 0) t = t.slice(0, m2);
+      var m3 = t.search(new RegExp('[\\s\\-–—,;:|]*' + JUNK_WORD.source, 'i')); if (m3 > 0) t = t.slice(0, m3);
+      var m4 = t.search(RELEASE); if (m4 > 0) t = t.slice(0, m4);
+      t = t.replace(/\s+/g, ' ').replace(/^[\s\-–—,;:|._(\[]+|[\s\-–—,;:|._)\]]+$/g, '');
+      if (!t) t = raw.replace(EXT, '').replace(/[\s._-]+/g, ' ').trim();
+      if (!t) return 'Untitled';
+      return cut(t, max);
+    } catch (_) {
+      return cut(raw.trim() || 'Untitled', max);
+    }
+  }
+
+  var api = { clean: clean, MAX: MAX };
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.SafinaTitle = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
 <script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -3455,7 +3940,7 @@ function rndFrame(src){if(!src)return Promise.resolve(null);if(FRC.has(src))retu
  FRC.set(src,pr);return pr}
 const RI={MOVIE:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>',TV:'<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/></svg>',BOOK:'<svg viewBox="0 0 24 24"><path d="M12 6c-1.5-1.2-3.5-2-6-2H3v14h3c2.5 0 4.5.8 6 2 1.5-1.2 3.5-2 6-2h3V4h-3c-2.5 0-4.5.8-6 2z"/><path d="M12 6v14"/></svg>',COMIC:'<svg viewBox="0 0 24 24"><path d="M4 4h16v12H10l-4 4v-4H4z"/><path d="M8 8.5h8M8 12h5"/></svg>'};
 let LF="all";
-function lib(){const R=$("rows");R.innerHTML="";
+function lib(){const R=$("rows");R.innerHTML="";const tc=x=>window.SafinaTitle?window.SafinaTitle.clean(x):String(x);
  const rows=ROWS.map(r=>r.slice());
  [[0,LIBD.movies],[1,LIBD.shows],[2,LIBD.books||[]],[3,LIBD.comics||[]]].forEach(z=>{if(z[1].length)rows[z[0]][4]=z[1].concat(ROWS[z[0]][4].filter(x=>x[2]))});
  const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));
@@ -3466,7 +3951,7 @@ function lib(){const R=$("rows");R.innerHTML="";
  R.append(bar);
  if(real.length&&LF=="all"){const it=real[0],h=document.createElement("div");h.className="lhero";
   h.style.background=(it.poster?"linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+it.poster+"') center/cover,":"")+"linear-gradient(135deg,"+PAL[0].split(",")[0]+",#0b0b0c)";
-  h.innerHTML="<span class='lk'>Pick up where you left off</span><h3>"+esc(it.title)+"</h3><p>"+esc(lvOf(it))+(it.sub?" · "+esc(it.sub):"")+"</p><button>▶ Play</button>";
+  h.innerHTML="<span class='lk'>Pick up where you left off</span><h3>"+esc(tc(it.title))+"</h3><p>"+esc(lvOf(it))+(it.sub?" · "+esc(it.sub):"")+"</p><button>"+(/^(Book|Comic)$/.test(it.lvl||"")?"Read":"▶ Play")+"</button>";
   if(!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(u)h.style.background="linear-gradient(90deg,rgba(0,0,0,.82),rgba(0,0,0,.15)),url('"+u+"') center/cover,#0b0b0c"})}
   h.onclick=()=>it.open();R.append(h)}
  rows.filter(r=>LF=="all"||r[3]==LF).forEach(r=>{
@@ -3474,10 +3959,11 @@ function lib(){const R=$("rows");R.innerHTML="";
   const row=document.createElement("div");row.className="row";
   const bs=h.querySelectorAll("button");bs[0].onclick=()=>row.scrollBy({left:-360,behavior:"smooth"});bs[1].onclick=()=>row.scrollBy({left:360,behavior:"smooth"});
   r[4].forEach((x,xi)=>{const it=Array.isArray(x)?null:x,c=document.createElement("div"),
-   name=it?it.title:x[0],lvl=it?lvOf(it):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
+   name=it?tc(it.title):x[0],lvl=it?lvOf(it):x[1],on=it?true:!!x[2],g=(it?PAL[xi%PAL.length]:x[3]).split(",");
    c.className="pc"+(on?"":" soon");
    const bg=(it&&it.poster?"url('"+it.poster+"') center/cover,":"")+"linear-gradient(160deg,"+g[0]+","+g[1]+")";
    c.innerHTML="<div class='poster' style=\"background:"+bg+"\"><span class='tag'>"+r[3]+"</span><span class='lv"+(on&&lvl!="No subs"?"":" g")+"'>"+esc(lvl)+"</span>"+(it&&it.poster?"":"<span class='pn'>"+esc(name)+"</span>")+(on?"<i class='pp'>"+(it&&it.glyph||"▶")+"</i>":"")+"</div><div class='pt'>"+esc(name)+"</div><div class='pm'>"+esc(it&&it.sub?it.sub:r[2])+" · "+esc(SAI.langInfo(LEARN()).name)+"</div>";
+   if(it){const rb=document.createElement("button");rb.className="rm";rb.type="button";rb.setAttribute("aria-label","Remove "+name);rb.innerHTML="<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3'/></svg>";rb.onclick=ev=>{ev.stopPropagation();ev.preventDefault();if(window.SAFINA_RM)window.SAFINA_RM.remove(r[3],it)};c.querySelector(".poster").append(rb)}
    if(it&&!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(!u)return;const pe=c.querySelector(".poster");if(!pe)return;pe.style.background="url('"+u+"') center/cover,linear-gradient(160deg,"+g[0]+","+g[1]+")";const pn=pe.querySelector(".pn");if(pn)pn.remove()})}
    if(on)c.onclick=()=>it?it.open():/^Import/.test(name)?(r[3]=="BOOK"||r[3]=="COMIC"?window.SAFINA_BOOKS.pick(r[3]):openImport({type:r[3]=="TV"?"tv":"movie"})):nav("watch");row.append(c)});
   R.append(h,row)})}
@@ -3577,10 +4063,21 @@ async function trBlock(el,ctx){const rt=el.querySelector(".rt"),out=el.querySele
  try{const r=await SAI.translateLine(rt.textContent,{ctx});out.dataset.done=1;out.textContent=r.t;if(r.d&&SHOWDIA()&&!rt.dataset.dia){rt.dataset.dia=1;rt.innerHTML=tapw(r.d)}}
  catch(e){out.textContent=(e&&e.message)||"Translation failed"}}
 let SOCN=0;
+function socHome(nm){
+ const rgb=h=>{h=String(h).replace("#","");return parseInt(h.slice(0,2),16)+","+parseInt(h.slice(2,4),16)+","+parseInt(h.slice(4,6),16)};
+ const by=id=>PL.find(p=>p[0]==id),yt=by("yt"),news=PL.filter(p=>p[4]=="news"),pr=PL.filter(p=>p[4]!="news"&&p[4]!="yt");
+ const chip=p=>"<i class='sico' style='background:linear-gradient(150deg,"+p[3]+")'>"+p[2]+"</i>",st=p=>"style='--pr:"+rgb(p[3].split(",")[0])+"'";
+ return "<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in "+esc(nm)+"</div></div></div>"
+ +"<div class='sl'><b>Real content</b><span>From the web</span></div>"
+ +"<div class='shero' data-a='p:yt' data-g='"+yt[2]+"' "+st(yt)+">"+chip(yt)+"<div class='sbody'><b>"+yt[1]+"</b><small>Real videos in "+esc(nm)+"</small><div class='spills'><span>Home</span><span>Shorts</span><span>Stories</span></div></div><span class='sgo'>&rsaquo;</span></div>"
+ +"<div class='sgrp'>"+news.map(p=>"<div class='srow' data-a='p:"+p[0]+"' "+st(p)+">"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>Latest headlines &middot; tap any word</small></div><span class='sgo'>&rsaquo;</span></div>").join("")+"</div>"
+ +"<div class='sl'><b>Practice feeds</b><span>Written by the AI</span></div>"
+ +"<div class='sgd'>"+pr.map(p=>"<div class='sp' data-a='p:"+p[0]+"' "+st(p)+"><span class='sbadge'>Practice</span>"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>AI-written "+esc(nm)+" posts</small></div></div>").join("")+"</div>"
+ +"<div class='snote'><i>i</i><span>TikTok, Facebook, Instagram and X do not let apps read their feeds, so these show posts the AI writes in "+esc(nm)+" for reading practice. They are always marked as practice text.</span></div>"}
 function chrome(){$("ab").style.display=P?"flex":"none";const se=$("search");P?se.style.setProperty("--ac",ACC[P]):se.style.removeProperty("--ac");$("an").innerHTML=P?"<i class='lg'>"+PL[pi()][2]+"</i>"+PL[pi()][1]:""}
 const rssCard=m=>"<div class='card'><b>"+(m=="nofeed"?"Add a news feed":"Could not load the feed")+"</b><div class='mu' style='margin:6px 0 10px'>"+(m=="nofeed"?"There is no built-in feed for this language and source. Paste an RSS address.":esc(m))+"</div><input id='rin' placeholder='https://…/rss.xml' style='width:100%;padding:10px;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--tx);font:inherit;margin-bottom:8px'><button class='pri' data-a='rss'>Use this feed</button></div>";
 async function soc(){const S=$("soc"),nm=SAI.langInfo(LEARN()).name,my=++SOCN;
- if(!P){S.innerHTML="<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in "+esc(nm)+"</div></div></div><div class='sg'>"+PL.map(p=>"<div class='sc' data-a='p:"+p[0]+"' style='background:linear-gradient(150deg,"+p[3]+")'><i>"+p[2]+"</i><div>"+p[1]+"<small>"+(p[4]=="news"?"News":p[4]=="yt"?"Videos":"Practice posts")+"</small></div></div>").join("")+"</div><p class='mu'>YouTube and the news sources are real. TikTok, Facebook, Instagram and X do not let apps read their feeds, so those show posts the AI writes in "+esc(nm)+" for reading practice. They are marked as practice text.</p>";return}
+ if(!P){S.innerHTML=socHome(nm);return}
  const ty=PL[pi()][4];let it=[],pre="";
  if(ty=="yt")it=await API.feed(P,tab,Q);
  else if(ty=="news"){S.innerHTML="<p class='mu'>Loading…</p>";const r=await newsFetch(P);if(my!=SOCN)return;if(r.err){S.innerHTML=rssCard(r.err);return}it=Q?r.items.filter(x=>x.ar.includes(Q)):r.items}
@@ -3838,8 +4335,7 @@ function fun(streak,mast,r,g){
 lib();chrome();soc();
 render();
 </script>
-<script>/* safina-ai-ui.js */
-/* Safina AI UI: the "AI & downloads" sheet, the limit dialog, first-run setup, and language switching.
+<script>/* Safina AI UI: the "AI & downloads" sheet, the limit dialog, first-run setup, and language switching.
  * Needs window.SAI (safina-boot.js), window.SafinaModels, window.SafinaAI. Uses the page's toast() when present. */
 (function () {
   'use strict';
@@ -4221,10 +4717,8 @@ render();
   const pb = $('safinaAiOpen'); if (pb) pb.onclick = openSheet;
   applyLang(); maybeFirstRun();
 })();
-
 </script>
-<script>/* safina-brain-ui.js */
-/* Safina brain UI: the understood / maybe / not-understood chip under a sentence, and the "learning brain" card on the profile page. */
+<script>/* Safina brain UI: the understood / maybe / not-understood chip under a sentence, and the "learning brain" card on the profile page. */
 (function () {
   'use strict';
   const B = window.BRAIN; if (!B) return;
@@ -4287,10 +4781,8 @@ render();
   });
   paint();
 })();
-
 </script>
-<script>/* safina-learn-ui.js */
-/* Safina learning screens: sentence practice, conjugation, the word table and progress.
+<script>/* Safina learning screens: sentence practice, conjugation, the word table and progress.
  * All the thinking is in safina-brain.js; this file only draws and collects answers. */
 (function () {
   'use strict';
@@ -4547,10 +5039,8 @@ render();
   B.on(ev => { if (ev === 'assessed' || ev === 'option' || ev === 'reset' || ev === 'cards') setTimeout(paintHub, 0); });
   setInterval(paintHub, 1500);
 })();
-
 </script>
-<script>/* safina-path.js */
-/* Safina: the top status bar (profile, language, streak, points) and the learning path.
+<script>/* Safina: the top status bar (profile, language, streak, points) and the learning path.
  * "Start learning" opens a path of lessons. Lessons are grouped into units by where you met the words (the film or series),
  * with a unit at the top for words you are losing. Each lesson is a short run of exercises built from the AI's sentences.
  * The thinking stays in safina-brain.js; this file draws and collects answers. */
@@ -4934,10 +5424,8 @@ render();
   window.SAFINA_XP = XP;
   window.SafinaPath = { open, close, xp: XP, paintBar };
 })();
-
 </script>
-<script>/* safina-film.js */
-/* Safina film preparation.
+<script>/* Safina film preparation.
  *
  *   Arabic SRT  ->  translator draft (on-phone or API)  ->  AI pass (reads the Arabic AND the draft, fixes it, gives each word's
  *   meaning in its line)  ->  saved as a translated SRT on the phone  ->  shown to the user.
@@ -5295,10 +5783,8 @@ render();
   setTimeout(rescan, 4000);
   window.SAFINA_FILM_SCAN = rescan;
 })();
-
 </script>
-<script>/* safina-prep-ui.js */
-/* Safina "get the subtitles ready" screen.
+<script>/* Safina "get the subtitles ready" screen.
  * The work itself is done by SAFINA_FILM (translate the whole film once, save it). This file only shows it while the film opens.
  * A film that was already prepared (in the background after import, or on an earlier visit) opens straight away with no screen. */
 (function () {
@@ -5402,10 +5888,8 @@ render();
   }
   window.SAFINA_PREP = { offer, run, release };
 })();
-
 </script>
-<script>/* safina-books.js */
-/* Books and comics: import, read, tap a word to see its meaning in the sentence, save the sentence as a flashcard.
+<script>/* Books and comics: import, read, tap a word to see its meaning in the sentence, save the sentence as a flashcard.
  * Books: EPUB or TXT. Comics: images or CBZ. Comic text is read from the picture (OCR) when you tap a speech bubble. */
 (function () {
   'use strict';
@@ -5530,8 +6014,9 @@ render();
 
   /* ---------- library hookup ---------- */
   const urls = {};
+  const clean = t => (window.SafinaTitle ? window.SafinaTitle.clean(t) : String(t == null ? '' : t).slice(0, 60) || 'Untitled');
   function toItem(r) {
-    const it = { title: r.title, lvl: r.type === 'book' ? 'Book' : 'Comic', ar: 1, sub: r.type === 'book' ? (r.pages ? r.pages.length : 0) + (r.pages && r.pages.length === 1 ? ' page' : ' pages') : r.imgs.length + (r.imgs.length === 1 ? ' page' : ' pages'), glyph: '→', open: () => open(r.id) };
+    const it = { id: r.id, title: clean(r.title), lvl: r.type === 'book' ? 'Book' : 'Comic', ar: 1, sub: r.type === 'book' ? (r.pages ? r.pages.length : 0) + (r.pages && r.pages.length === 1 ? ' page' : ' pages') : r.imgs.length + (r.imgs.length === 1 ? ' page' : ' pages'), glyph: '→', open: () => open(r.id), remove: async () => { await del(r.id); await refresh(); } };
     if (r.type === 'comic') { urls[r.id] = urls[r.id] || URL.createObjectURL(r.imgs[0]); it.poster = urls[r.id]; }
     return it;
   }
@@ -5547,8 +6032,8 @@ render();
       try {
         toast('Importing…');
         let rec;
-        if (kind === 'BOOK') { const f = files[0], n = f.name.toLowerCase(), p = /\.epub$/.test(n) ? await parseEpub(await f.arrayBuffer(), f.name) : /\.pdf$/.test(n) ? await parsePdfBook(f) : /\.docx$/.test(n) ? await parseDocx(f) : /\.(html?|md)$/.test(n) ? await parseMarkup(f) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: p.title, pages: p.pages, pos: 0, created: Date.now() }; }
-        else { const p = await parseComic(files); rec = { id: 'c' + Date.now(), type: 'comic', title: p.title, imgs: p.imgs, pos: 0, created: Date.now() }; }
+        if (kind === 'BOOK') { const f = files[0], n = f.name.toLowerCase(), p = /\.epub$/.test(n) ? await parseEpub(await f.arrayBuffer(), f.name) : /\.pdf$/.test(n) ? await parsePdfBook(f) : /\.docx$/.test(n) ? await parseDocx(f) : /\.(html?|md)$/.test(n) ? await parseMarkup(f) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: clean(p.title), pages: p.pages, pos: 0, created: Date.now() }; }
+        else { const p = await parseComic(files); rec = { id: 'c' + Date.now(), type: 'comic', title: clean(p.title), imgs: p.imgs, pos: 0, created: Date.now() }; }
         await put(rec); await refresh(); toast('Added "' + rec.title + '"'); open(rec.id);
       } catch (e) { toast('Could not import: ' + (e && e.message ? e.message : e)); }
     };
@@ -5575,7 +6060,11 @@ render();
     document.body.appendChild(b);
     const pop = document.createElement('div'); pop.id = 'sbk-pop'; document.body.appendChild(pop);
     $('sbk-x').onclick = close; $('sbk-p').onclick = () => go(-1); $('sbk-nx').onclick = () => go(1);
-    $('sbk-d').onclick = async () => { if (cur && confirm('Remove "' + cur.title + '" from your library?')) { await del(cur.id); close(); refresh(); } };
+    $('sbk-d').onclick = async () => {
+      if (!cur) return;
+      const nm = clean(cur.title), q = { title: 'Remove “' + nm + '”?', text: 'It will be taken out of your library, along with your place in it. The original file on your phone is not touched.', ok: 'Remove' };
+      if (await (window.SAFINA_RM ? window.SAFINA_RM.ask(q) : Promise.resolve(confirm(q.title)))) { await del(cur.id); close(); refresh(); }
+    };
     $('sbk-o').onclick = () => { ocrMode = !ocrMode; $('sbk-o').textContent = ocrMode ? 'Tap a bubble…' : 'Read text'; if (!ocrMode) $('sbk-oc').classList.remove('on'); };
     $('sbk-b').addEventListener('click', onBody);
     $('sbk-oc').addEventListener('click', onBody);
@@ -5583,7 +6072,7 @@ render();
   }
   async function open(id) {
     cur = await get(id); if (!cur) return; page = Math.min(cur.pos || 0, (cur.type === 'book' ? cur.pages.length : cur.imgs.length) - 1); ocrMode = false;
-    shell().classList.add('on'); $('sbk-t').textContent = cur.title; $('sbk-o').style.display = cur.type === 'comic' ? '' : 'none'; $('sbk-o').textContent = 'Read text'; $('sbk-oc').classList.remove('on'); draw();
+    shell().classList.add('on'); $('sbk-t').textContent = clean(cur.title); $('sbk-o').style.display = cur.type === 'comic' ? '' : 'none'; $('sbk-o').textContent = 'Read text'; $('sbk-oc').classList.remove('on'); draw();
   }
   function close() { const b = $('sbk'); if (b) b.classList.remove('on'); closePop(); if (cur) { cur.pos = page; put(cur).catch(() => { }); } }
   const total = () => cur.type === 'book' ? cur.pages.length : cur.imgs.length;
@@ -5670,10 +6159,143 @@ render();
   const start = () => { setTimeout(refresh, 600); addSheet(); setInterval(addSheet, 800); document.addEventListener('click', () => setTimeout(addSheet, 60), true); };
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', start) : start();
 })();
-
 </script>
-<script>/* safina-color.js */
-/* App colour: pick a swatch or type a hex code in Profile; saved on this phone and applied on every start. */
+<script>/* Safina remove: take a film, show, book or comic out of the library.
+ *   SAFINA_RM.ask({title,text,ok})   a small dark confirm sheet (resolves true / false)
+ *   SAFINA_RM.remove(kind, tile)     kind is "MOVIE" | "TV" | "BOOK" | "COMIC"; tile is the library item object
+ * Books and comics carry their own tile.remove(). Films and shows live in the library database (IndexedDB "safina",
+ * written by safina-library.js), so this reads it the same way the library does: the library lists items by creation time,
+ * one tile per show and one tile per movie, and the tile is matched by its position in that list.
+ * The files you imported from your phone are never touched, only the copies Safina keeps. */
+(function () {
+  'use strict';
+  var DB = 'safina';
+
+  /* ---------- the confirm sheet ---------- */
+  var css = '#sr{position:fixed;inset:0;z-index:100000;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.6);font-family:"Plus Jakarta Sans",system-ui,sans-serif}' +
+    '#sr.on{display:flex}' +
+    '#sr .p{width:min(100%,520px);box-sizing:border-box;background:#121316;color:#f1f1f3;border:1px solid rgba(255,255,255,.08);border-bottom:0;border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px))}' +
+    '#sr h3{margin:0 0 8px;font:800 19px/1.25 "Plus Jakarta Sans",system-ui,sans-serif;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}' +
+    '#sr p{margin:0 0 20px;font-size:14px;line-height:1.5;color:#a3a6af}' +
+    '#sr .r{display:flex;gap:10px}#sr button{flex:1;height:50px;border:0;border-radius:999px;font:800 15px "Plus Jakarta Sans",system-ui,sans-serif;background:#25262b;color:#fff}' +
+    '#sr button.d{background:var(--ac,#e11d2e);color:var(--on,#fff)}';
+  var sheet, resolve;
+  function build() {
+    if (sheet || typeof document === 'undefined') return sheet;
+    var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    sheet = document.createElement('div'); sheet.id = 'sr'; sheet.setAttribute('role', 'alertdialog'); sheet.setAttribute('aria-modal', 'true');
+    sheet.innerHTML = '<div class="p"><h3 id="sr-t"></h3><p id="sr-x"></p><div class="r"><button id="sr-n">Cancel</button><button id="sr-y" class="d">Remove</button></div></div>';
+    document.body.appendChild(sheet);
+    sheet.addEventListener('click', function (e) { if (e.target === sheet) done(false); });
+    sheet.querySelector('#sr-n').onclick = function () { done(false); };
+    sheet.querySelector('#sr-y').onclick = function () { done(true); };
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && sheet.classList.contains('on')) done(false); });
+    return sheet;
+  }
+  function done(v) { if (!sheet) return; sheet.classList.remove('on'); var r = resolve; resolve = null; if (r) r(v); }
+  function ask(o) {
+    o = o || {};
+    var s = build();
+    if (!s) return Promise.resolve(typeof confirm === 'function' ? confirm((o.title || '') + '\n' + (o.text || '')) : false);
+    if (resolve) done(false);
+    s.querySelector('#sr-t').textContent = o.title || 'Remove this?';
+    s.querySelector('#sr-x').textContent = o.text || '';
+    s.querySelector('#sr-y').textContent = o.ok || 'Remove';
+    s.classList.add('on');
+    return new Promise(function (r) { resolve = r; setTimeout(function () { var b = s.querySelector('#sr-n'); if (b) b.focus(); }, 30); });
+  }
+
+  /* ---------- the library database (same shape safina-library.js creates) ---------- */
+  var dbp = null;
+  function getDb() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res, rej) {
+      if (!window.indexedDB) return rej(new Error('Storage is not available here'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function () {
+        var d = r.result;
+        if (!d.objectStoreNames.contains('items')) d.createObjectStore('items', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'id' }).createIndex('item', 'itemId');
+      };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error || new Error('Could not open the library')); };
+    }).catch(function (e) { dbp = null; throw e; });
+    return dbp;
+  }
+  function tx(stores, mode, fn) {
+    return getDb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var t = db.transaction(stores, mode), out;
+        t.oncomplete = function () { res(out && typeof out === 'object' && 'result' in out ? out.result : out); };
+        t.onerror = function () { rej(t.error); };
+        t.onabort = function () { rej(t.error || new Error('The change was cancelled')); };
+        try { out = fn(t); } catch (e) { try { t.abort(); } catch (_) { /* already finished */ } rej(e); }
+      });
+    });
+  }
+  function dropItemFiles(t, itemId) {
+    var s = t.objectStore('files'), req = s.index('item').openKeyCursor(IDBKeyRange.only(itemId));
+    req.onsuccess = function () { var c = req.result; if (c) { s.delete(c.primaryKey); c.continue(); } };
+  }
+
+  /* find the stored item (and movie) behind a library tile */
+  function locate(kind, tile) {
+    return tx(['items'], 'readonly', function (t) { return t.objectStore('items').getAll(); }).then(function (all) {
+      var items = (all || []).slice().sort(function (a, b) { return a.createdAt - b.createdAt; }), slots = [];
+      items.forEach(function (it) {
+        if (kind === 'TV') { if (it.type === 'tv') slots.push({ it: it }); }
+        else if (it.type !== 'tv') (it.movies || []).forEach(function (m) { slots.push({ it: it, m: m }); });
+      });
+      // LIBD is a top-level const in the page, so it is not a property of window
+      var L = (typeof LIBD !== 'undefined') ? LIBD : (window.LIBD || {});
+      var arr = (kind === 'TV' ? L.shows : L.movies) || [];
+      var i = arr.indexOf(tile);
+      if (i < 0 || arr.length !== slots.length) throw new Error('The library changed, please try again');
+      return slots[i];
+    });
+  }
+  function removeStored(kind, tile) {
+    return locate(kind, tile).then(function (hit) {
+      var it = hit.it, m = hit.m;
+      if (kind === 'MOVIE' && it.movies && it.movies.length > 1) {
+        // one film out of a folder of films: drop just its own files and keep the rest of the item
+        var ids = [m.videoId].concat((m.subs || []).map(function (s) { return s.id; })).filter(Boolean);
+        it.movies = it.movies.filter(function (x) { return x.key !== m.key; });
+        return tx(['items', 'files'], 'readwrite', function (t) {
+          var f = t.objectStore('files'); ids.forEach(function (id) { f.delete(id); });
+          t.objectStore('items').put(it);
+        });
+      }
+      return tx(['items', 'files'], 'readwrite', function (t) { dropItemFiles(t, it.id); t.objectStore('items').delete(it.id); });
+    }).then(function () {
+      if (typeof window.refreshSafinaLibrary === 'function') return window.refreshSafinaLibrary();
+    });
+  }
+
+  function say(t) { try { if (typeof toast === 'function') toast(t); } catch (_) { /* no toast */ } }
+
+  function remove(kind, tile) {
+    if (!tile) return Promise.resolve(false);
+    var name = (window.SafinaTitle ? window.SafinaTitle.clean(tile.title) : String(tile.title || 'this'));
+    var what = kind === 'BOOK' ? 'book' : kind === 'COMIC' ? 'comic' : kind === 'TV' ? 'show' : 'film';
+    return ask({
+      title: 'Remove “' + name + '”?',
+      text: kind === 'BOOK' || kind === 'COMIC'
+        ? 'This ' + what + ' will be taken out of your library, along with your place in it. The original file on your phone is not touched.'
+        : 'This ' + what + ' and the copies Safina kept of its files will be taken out of your library. The original files on your phone are not touched.',
+      ok: 'Remove'
+    }).then(function (yes) {
+      if (!yes) return false;
+      return Promise.resolve(typeof tile.remove === 'function' ? tile.remove() : removeStored(kind, tile))
+        .then(function () { say('Removed'); return true; })
+        .catch(function (e) { say('Could not remove: ' + ((e && e.message) || e)); return false; });
+    });
+  }
+
+  window.SAFINA_RM = { ask: ask, remove: remove };
+})();
+</script>
+<script>/* App colour: pick a swatch or type a hex code in Profile; saved on this phone and applied on every start. */
 (function () {
   'use strict';
   const KEY = 'safina.accent.v1', DEF = '#e11d2e', SW = ['#e11d2e', '#ff6a2b', '#f5b301', '#2fb36d', '#1fb5c9', '#3d6bff', '#8b5cf6', '#ec4899'];
@@ -5713,9 +6335,366 @@ render();
   const go = () => { mount(); setInterval(mount, 1500); };
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', go) : go();
 })();
-
 </script>
+<script>/* Safina library: real import (file picker -> tree review -> IndexedDB), library tiles, show detail, playback.
+ * Uses globals from index.html: parseSrt, decodeBuf, toast, nav, playLoaded, LIBD, lib.
+ * Uses SafinaMatch (parsing + matching) and SafinaTree (tree HTML). */
+(function () {
+  'use strict';
+  const SM = window.SafinaMatch, ST = window.SafinaTree;
+  const el = id => document.getElementById(id);
+  const esc = s => ST.esc(s);
+  const pad = n => String(n).padStart(2, '0');
+  if (!SM || !ST) { console.error('safina-match.js / safina-tree.js did not load'); return; }
 
+  /* ---------------------------------------------------------------- storage */
+  let dbp = null;
+  function getDb() {
+    if (dbp) return dbp;
+    dbp = new Promise((res, rej) => {
+      if (!window.indexedDB) return rej(new Error('IndexedDB is not available in this WebView'));
+      const r = indexedDB.open('safina', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('items', { keyPath: 'id' });
+        d.createObjectStore('files', { keyPath: 'id' }).createIndex('item', 'itemId');
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error || new Error('Could not open the library database'));
+    }).catch(e => { dbp = null; throw e; });
+    return dbp;
+  }
+  async function dbOp(stores, mode, fn) {
+    const db = await getDb();
+    return new Promise((res, rej) => {
+      const t = db.transaction(stores, mode);
+      let out;
+      t.oncomplete = () => res(out && typeof out === 'object' && 'result' in out ? out.result : out);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error || new Error('Database transaction aborted'));
+      try { out = fn(t); } catch (e) { try { t.abort(); } catch (_) {} rej(e); }
+    });
+  }
+  const friendly = e => {
+    if (e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''))) return 'Not enough free storage on this phone for these files.';
+    return (e && e.message) ? e.message : String(e);
+  };
+  const allItems = () => dbOp(['items'], 'readonly', t => t.objectStore('items').getAll());
+  const getItem = id => dbOp(['items'], 'readonly', t => t.objectStore('items').get(id));
+  const putItem = it => dbOp(['items'], 'readwrite', t => t.objectStore('items').put(it));
+  const getFile = id => dbOp(['files'], 'readonly', t => t.objectStore('files').get(id));
+  const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  async function putFile(itemId, role, file, written, lang) {
+    const id = itemId + '/' + rid();
+    await dbOp(['files'], 'readwrite', t => t.objectStore('files').put({ id, itemId, role, name: file.name, lang: lang || null, size: file.size, blob: file }));
+    written.push(id);
+    return id;
+  }
+  const delFiles = ids => ids.length ? dbOp(['files'], 'readwrite', t => { const s = t.objectStore('files'); ids.forEach(i => s.delete(i)); }) : Promise.resolve();
+  const delItemFiles = itemId => dbOp(['files'], 'readwrite', t => {
+    const s = t.objectStore('files'), req = s.index('item').openKeyCursor(IDBKeyRange.only(itemId));
+    req.onsuccess = () => { const c = req.result; if (c) { s.delete(c.primaryKey); c.continue(); } };
+  });
+
+  /* ---------------------------------------------------------------- import state */
+  const S = { entries: new Map(), overrides: {}, choices: {}, sel: new Map(), open: new Map(), busy: false, tree: null, fixedTitle: null };
+
+  async function readEntry(file) {
+    const e = { id: [file.name, file.size, file.lastModified].join('|'), name: file.name, path: file.webkitRelativePath || file.name, size: file.size, file, kind: SM.fileKind(file.name), lang: null, error: null };
+    if (!file.size) { e.error = 'File is empty (0 bytes)'; return e; }
+    try {
+      if (e.kind === 'subtitle') {
+        const cues = parseSrt(decodeBuf(await file.arrayBuffer()));
+        if (!cues.length) e.error = 'No subtitle cues found. Is this a valid .srt/.vtt file?';
+        else e.lang = SM.detectLanguage(cues.map(c => c.t).join(' '));
+      } else {
+        await file.slice(0, 2048).arrayBuffer();        // proves the picker really gave us readable bytes
+      }
+    } catch (err) {
+      e.error = 'Could not read this file (' + (err && err.message ? err.message : err) + '). Pick it again from the file chooser.';
+    }
+    return e;
+  }
+
+  function status(msg, warn) {
+    const s = el('safina-status');
+    s.textContent = msg;
+    s.className = 'mu' + (warn ? ' safina-import-warning' : '');
+  }
+
+  function treeEntries() {
+    return [...S.entries.values()].filter(e => !e.error && (e.kind === 'video' || e.kind === 'subtitle'))
+      .map(e => ({ id: e.id, name: e.name, path: e.path, lang: e.lang, size: e.size }));
+  }
+  function ignoredList() {
+    const out = [];
+    S.entries.forEach(e => {
+      if (e.error) out.push({ name: e.name, reason: e.error });
+      else if (e.kind === 'other') out.push({ name: e.name, reason: 'Unsupported file type' });
+      else if (e.kind === 'book' || e.kind === 'comic') out.push({ name: e.name, reason: 'Books and comics cannot be imported yet' });
+    });
+    return out;
+  }
+  function currentTitle(tree) { return el('safina-import-title').value.trim() || (tree && tree.seriesTitle) || ''; }
+
+  function render() {
+    const box = el('safina-tree'), type = el('safina-import-type').value;
+    if (!S.entries.size) {
+      box.innerHTML = '';
+      el('safina-pick-count').textContent = '';
+      status('Choose your video and subtitle files. You can pick them in several rounds.');
+      updateGo();
+      return;
+    }
+    const tree = SM.buildTree(treeEntries(), { type, overrides: S.overrides, choices: S.choices });
+    S.tree = tree;
+    box.innerHTML = ST.render(tree, { sel: S.sel, open: S.open, title: currentTitle(tree) || 'Untitled', ignored: ignoredList() });
+    el('safina-pick-count').textContent = S.entries.size + ' file' + (S.entries.size === 1 ? '' : 's');
+    const n = ST.selection(tree, S.sel).length, total = ST.allNodes(tree).length;
+    const extras = [...S.entries.values()].filter(e => !e.error && (e.kind === 'image' || e.kind === 'text')).length;
+    status(n + ' of ' + total + ' ' + (type === 'tv' ? 'episode' : 'movie') + (total === 1 ? '' : 's') + ' selected' + (extras ? ' · ' + extras + ' cover/description file(s) will be attached' : '') + '.', false);
+    updateGo();
+  }
+  function updateGo() {
+    const n = S.tree && S.entries.size ? ST.selection(S.tree, S.sel).length : 0;
+    const b = el('safina-import-go');
+    b.disabled = S.busy || n === 0;
+    b.textContent = S.busy ? 'Importing…' : (n ? 'Import ' + n + ' selected' : 'Import');
+    el('safina-pick-btn').disabled = S.busy;
+    el('safina-clear-btn').disabled = S.busy;
+  }
+
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) { status('No files were selected.', true); return; }
+    let k = 0;
+    for (const f of files) {
+      k++;
+      status('Reading file ' + k + ' of ' + files.length + ': ' + f.name);
+      const e = await readEntry(f);
+      S.entries.set(e.id, e);
+    }
+    render();
+  }
+
+  /* ---------------------------------------------------------------- tree interactions */
+  function onTreeClick(ev) {
+    const t = ev.target.closest('button');
+    if (!t) return;
+    const tree = S.tree;
+    if (t.dataset.toggle) {
+      S.open.set(t.dataset.toggle, t.getAttribute('aria-expanded') !== 'true');
+      render();
+    } else if (t.dataset.quick && tree) {
+      ST.allNodes(tree).forEach(nd => {
+        const on = t.dataset.quick === 'all' ? true : t.dataset.quick === 'none' ? false : (nd.status === 'matched' || nd.status === 'missing-subtitle');
+        S.sel.set(nd.key, on && ST.isSelectable(nd));
+      });
+      render();
+    } else if (t.dataset.applySeason && tree) {
+      const n = parseInt(el('safina-season-fix').value, 10);
+      if (!(n >= 1 && n <= 99)) { status('Enter a season number between 1 and 99.', true); return; }
+      const grp = tree.seasons.find(s => s.season == null);
+      if (grp) grp.episodes.forEach(e => e.videos.concat(e.subs).forEach(i => { S.overrides[i.id] = Object.assign({}, S.overrides[i.id], { season: n }); }));
+      S.sel.clear();
+      render();
+    } else if (t.dataset.place) {
+      const id = t.dataset.place, q = a => el('safina-tree').querySelector('[data-place-' + a + '="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      const ep = parseInt(q('episode').value, 10), se = parseInt(q('season').value, 10);
+      if (!(ep >= 1)) { status('Enter an episode number to place this file.', true); return; }
+      S.overrides[id] = Object.assign({}, S.overrides[id], { episode: ep }, se >= 1 ? { season: se } : {});
+      render();
+    }
+  }
+  function onTreeChange(ev) {
+    const t = ev.target;
+    if (t.dataset.pick) { S.sel.set(t.dataset.pick, t.checked); render(); }
+    else if (t.dataset.choice) {
+      if (t.value) S.choices[t.dataset.choice] = t.value; else delete S.choices[t.dataset.choice];
+      render();
+    }
+  }
+
+  /* ---------------------------------------------------------------- import */
+  async function runImport() {
+    if (S.busy || !S.tree) return;
+    const tree = S.tree, type = el('safina-import-type').value;
+    const nodes = ST.selection(tree, S.sel);
+    if (!nodes.length) { status('Nothing is selected to import.', true); return; }
+    const title = currentTitle(tree);
+    if (!title) { status('Enter a title for this ' + (type === 'tv' ? 'show' : 'movie') + '.', true); el('safina-import-title').focus(); return; }
+    S.busy = true; updateGo();
+    const written = [], replaced = [];
+    let item = null, isNew = false;
+    try {
+      try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (_) {}
+      const norm = SM.norm(title);
+      item = (await allItems()).find(i => i.type === type && i.norm === norm);
+      if (!item) { isNew = true; item = { id: 'it' + rid(), type, title, norm, createdAt: Date.now(), episodes: {}, movies: [] }; }
+      let n = 0;
+      for (const nd of nodes) {
+        n++;
+        const v = S.entries.get(nd.videos[0].id);
+        status('Importing ' + n + ' of ' + nodes.length + ': ' + v.name + ' (' + Math.round(v.size / 1048576) + ' MB)…');
+        const videoId = await putFile(item.id, 'video', v.file, written);
+        const subs = [];
+        for (const s of nd.subs) {
+          const se = S.entries.get(s.id);
+          subs.push({ id: await putFile(item.id, 'subtitle', se.file, written, s.lang), lang: s.lang || 'und', name: s.name });
+        }
+        const rec = { key: nd.key, season: nd.isMovie ? null : nd.season, episode: nd.isMovie ? null : nd.episode, videoId, videoName: v.name, subs };
+        if (type === 'tv') {
+          const old = item.episodes[nd.key];
+          if (old) replaced.push(old.videoId, ...old.subs.map(s => s.id));
+          item.episodes[nd.key] = rec;
+        } else {
+          item.movies = item.movies.filter(m => m.key !== nd.key);
+          item.movies.push(rec);
+        }
+      }
+      // optional cover + description from the same selection
+      const imgs = [...S.entries.values()].filter(e => !e.error && e.kind === 'image');
+      const cover = imgs.find(e => /cover|poster|folder|thumb|artwork/i.test(e.name)) || (imgs.length === 1 ? imgs[0] : null);
+      if (cover) {
+        if (item.posterId) replaced.push(item.posterId);
+        item.posterId = await putFile(item.id, 'image', cover.file, written);
+      }
+      const txt = [...S.entries.values()].find(e => !e.error && e.kind === 'text');
+      if (txt) { try { item.description = (await txt.file.text()).trim().slice(0, 4000); } catch (_) {} }
+      await putItem(item);
+      await delFiles(replaced.filter(i => !written.includes(i)));
+      toast('Imported ' + nodes.length + (type === 'tv' ? ' episode' : ' movie') + (nodes.length === 1 ? '' : 's') + ' into "' + title + '"');
+      resetImport();
+      closeSheets();
+      await refreshLibrary();
+    } catch (e) {
+      try { await delFiles(written); } catch (_) {}
+      status('Import failed: ' + friendly(e) + ' Nothing was added to your library.', true);
+    } finally {
+      S.busy = false; updateGo();
+    }
+  }
+  function resetImport() {
+    S.entries.clear(); S.overrides = {}; S.choices = {}; S.sel.clear(); S.open.clear(); S.tree = null;
+    el('safina-import-files').value = '';
+    render();
+  }
+
+  /* ---------------------------------------------------------------- library tiles */
+  const posterUrls = [];
+  async function refreshLibrary() {
+    const items = (await allItems()).sort((a, b) => a.createdAt - b.createdAt);
+    posterUrls.splice(0).forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    const movies = [], shows = [];
+    for (const it of items) {
+      let poster = null;
+      if (it.posterId) { const f = await getFile(it.posterId); if (f) { poster = URL.createObjectURL(f.blob); posterUrls.push(poster); } }
+      const recs = it.type === 'tv' ? Object.values(it.episodes) : it.movies;
+      const has = l => recs.some(r => r.subs.some(s => s.lang === l));
+      const base = { poster, ar: has('ar'), en: has('en') };
+      if (it.type === 'tv') shows.push(Object.assign({ title: it.title, sub: recs.length + ' episode' + (recs.length === 1 ? '' : 's'), open: () => openShow(it.id) }, base));
+      else it.movies.forEach(m => movies.push(Object.assign({}, base, { title: it.movies.length > 1 ? SM.parseName(m.videoName).series || m.videoName : it.title, sub: '', ar: m.subs.some(s => s.lang === 'ar'), en: m.subs.some(s => s.lang === 'en'), open: () => playStored(m, it.title, '') })));
+    }
+    LIBD.movies = movies; LIBD.shows = shows;
+    lib();
+  }
+
+  /* ---------------------------------------------------------------- playback */
+  async function playStored(rec, title, sub) {
+    try {
+      toast('Loading…');
+      const vf = await getFile(rec.videoId);
+      if (!vf) throw new Error('the video file is missing from app storage - import it again');
+      let A = [], E = [];
+      for (const s of rec.subs) {
+        const sf = await getFile(s.id);
+        if (!sf) continue;
+        const cues = parseSrt(decodeBuf(await sf.blob.arrayBuffer()));
+        const l = s.lang && s.lang !== 'und' ? s.lang : SM.detectLanguage(cues.map(c => c.t).join(' '));
+        if (l === 'ar' && !A.length) A = cues; else if (l === 'en' && !E.length) E = cues;
+      }
+      closeSheets();
+      playLoaded({ video: URL.createObjectURL(vf.blob), A, E, title, sub });
+    } catch (e) { toast('Could not play: ' + friendly(e)); }
+  }
+
+  /* ---------------------------------------------------------------- show detail (read-only tree) */
+  const showCtx = { id: null, recs: new Map(), item: null };
+  async function openShow(id) {
+    const item = await getItem(id);
+    if (!item) { toast('That show is no longer in your library.'); refreshLibrary(); return; }
+    showCtx.id = id; showCtx.item = item; showCtx.recs = new Map();
+    const bySeason = new Map();
+    Object.values(item.episodes).forEach(r => {
+      showCtx.recs.set(r.key, r);
+      const k = r.season == null ? '?' : r.season;
+      if (!bySeason.has(k)) bySeason.set(k, []);
+      bySeason.get(k).push({ key: r.key, season: r.season, episode: r.episode, videos: [{ id: r.videoId, name: r.videoName }], subs: r.subs, notes: [], conflicts: [], status: r.subs.length ? 'matched' : 'missing-subtitle' });
+    });
+    const seasons = [...bySeason.entries()].map(([k, eps]) => ({ season: k === '?' ? null : k, label: k === '?' ? 'Season unknown' : 'Season ' + pad(k), episodes: eps.sort((a, b) => a.episode - b.episode) }))
+      .sort((a, b) => (a.season == null) - (b.season == null) || a.season - b.season);
+    const tree = { type: 'tv', series: item.title, seasons, counts: {}, unparsed: [], foreign: [] };
+    const panel = el('safina-show-panel');
+    panel.innerHTML =
+      '<div class="safina-add-title"><div><h2>' + esc(item.title) + '</h2><div class="mu">' + Object.keys(item.episodes).length + ' episodes in your library</div></div><button type="button" id="safina-show-close" aria-label="Close">✕</button></div>' +
+      (item.description ? '<p class="mu safina-desc">' + esc(item.description) + '</p>' : '') +
+      '<div id="safina-show-tree"></div>' +
+      '<div class="safina-import-actions"><button type="button" id="safina-show-remove">Remove from library</button><button type="button" class="pri" id="safina-show-add">Add episodes</button></div>';
+    const open = new Map();
+    const draw = () => { el('safina-show-tree').innerHTML = ST.render(tree, { readOnly: true, playable: true, open, title: item.title }); };
+    draw();
+    el('safina-show-tree').onclick = ev => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.toggle) { open.set(b.dataset.toggle, b.getAttribute('aria-expanded') !== 'true'); draw(); }
+      else if (b.dataset.play) {
+        const r = showCtx.recs.get(b.dataset.play);
+        playStored(r, item.title, r.season != null ? 'S' + pad(r.season) + 'E' + pad(r.episode) : '');
+      }
+    };
+    el('safina-show-close').onclick = closeSheets;
+    el('safina-show-add').onclick = () => { closeSheets(); openImport({ type: 'tv', title: item.title }); };
+    el('safina-show-remove').onclick = async () => {
+      if (!confirm('Remove "' + item.title + '" and its imported files from Safina? Your original files on the phone are not touched.')) return;
+      try { await delItemFiles(item.id); await dbOp(['items'], 'readwrite', t => t.objectStore('items').delete(item.id)); closeSheets(); await refreshLibrary(); toast('Removed'); }
+      catch (e) { toast('Could not remove: ' + friendly(e)); }
+    };
+    el('safina-show-sheet').classList.add('open');
+  }
+
+  /* ---------------------------------------------------------------- sheets */
+  function closeSheets() { document.querySelectorAll('.safina-sheet.open').forEach(s => s.classList.remove('open')); }
+  function openImport(opts) {
+    opts = opts || {};
+    if (opts.type) el('safina-import-type').value = opts.type;
+    if (opts.title != null) el('safina-import-title').value = opts.title;
+    el('safina-add-sheet').classList.add('open');
+    render();
+  }
+  window.openImport = openImport;
+  window.refreshSafinaLibrary = refreshLibrary;
+
+  el('safina-add').addEventListener('click', () => openImport());
+  el('safina-add-close').addEventListener('click', closeSheets);
+  el('safina-import-cancel').addEventListener('click', closeSheets);
+  document.querySelectorAll('.safina-sheet').forEach(s => s.addEventListener('click', e => { if (e.target === s) closeSheets(); }));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheets(); });
+  el('safina-pick-btn').addEventListener('click', () => el('safina-import-files').click());
+  el('safina-import-files').addEventListener('change', async e => {
+    try { await addFiles(e.target.files); } catch (err) { status('Could not read the selected files: ' + friendly(err), true); }
+    e.target.value = '';                       // allows picking the same file again later
+  });
+  el('safina-clear-btn').addEventListener('click', resetImport);
+  el('safina-import-type').addEventListener('change', () => { S.sel.clear(); S.choices = {}; render(); });
+  el('safina-import-title').addEventListener('input', () => { if (S.tree) el('safina-tree').querySelector('.troot .tl') && (el('safina-tree').querySelector('.troot .tl').textContent = currentTitle(S.tree) || 'Untitled'); });
+  el('safina-tree').addEventListener('click', onTreeClick);
+  el('safina-tree').addEventListener('change', onTreeChange);
+  el('safina-import-go').addEventListener('click', runImport);
+
+  render();
+  refreshLibrary().catch(e => { console.error(e); toast('Library could not be loaded: ' + friendly(e)); });
+})();
+</script>
 <script>
 /* swipe left/right to move Library ⇄ Socials ⇄ Cards ⇄ Profile */
 (function(){
@@ -7736,8 +8715,7 @@ ed.addEventListener('touchcancel',end,{passive:true});
 #watch.apk-set #apk-wm{display:none!important}
 @container (max-height:230px){#apk-wm .wd{font-size:24px}#apk-wm.on{padding:6px 20px 8px}}
 </style>
-<style id="safina-theme">
-/* Safina: original look + a soft glow background, a bigger wordmark, a smaller My Library and a diamond add button. */
+<style>/* Safina: original look + a soft glow background, a bigger wordmark, a smaller My Library and a diamond add button. */
 :root{--ac-rgb:225,29,46}
 html,body{background:#070708!important}
 body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(90% 34% at 50% -8%,rgba(var(--ac-rgb),.20),transparent 72%)}
@@ -7774,6 +8752,67 @@ header{z-index:5}
 #library .pp{display:none!important}
 .safina-add-panel{padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}
 
+/* ===== long titles can never stretch a card ===== */
+#library .row{max-width:100%}
+#library .pc{flex:0 0 150px;width:150px;min-width:0;max-width:150px}
+#library .poster{min-width:0;max-width:100%;overflow:hidden;padding:14px 12px}
+#library .poster .pn{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:5;line-clamp:5;overflow:hidden;min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word;font-size:19px;line-height:1.12}
+#library .pt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+#library .pm{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#library .tag,#library .lv{max-width:calc(50% - 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lhero{min-width:0;max-width:100%}
+.lhero h3{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
+.lhero p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* remove button on every library card */
+#library .poster .rm{position:absolute;right:8px;bottom:8px;z-index:2;width:32px;height:32px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);cursor:pointer;-webkit-tap-highlight-color:transparent}
+#library .poster .rm svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#library .poster .rm:active{background:var(--ac)}
+
+/* ===== Socials ===== */
+#soc .sl{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:24px 2px 10px}
+#soc .sl b{font:800 12px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#c9cbd2}
+#soc .sl span{font-size:12px;color:var(--mu)}
+#soc .sico{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;flex:none;font:800 20px/1 "Plus Jakarta Sans",system-ui,sans-serif;font-style:normal;color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 6px 14px rgba(0,0,0,.35)}
+#soc .sbody{min-width:0;flex:1}
+#soc .sbody b{display:block;font:800 17px/1.2 "Plus Jakarta Sans",system-ui,sans-serif;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#soc .sbody small{display:block;margin-top:3px;font:600 12.5px/1.35 "Plus Jakarta Sans",system-ui,sans-serif;color:var(--mu)}
+#soc .sgo{flex:none;font:400 28px/1 system-ui,sans-serif;color:rgba(255,255,255,.34)}
+#soc .shero,#soc .srow,#soc .sp{-webkit-tap-highlight-color:transparent;transition:transform .15s}
+#soc .shero:active,#soc .sp:active{transform:scale(.985)}
+#soc .shero{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;padding:20px 18px;min-height:132px;border-radius:26px;cursor:pointer;border:1px solid rgba(255,255,255,.08);background:radial-gradient(120% 150% at 100% 0%,rgba(var(--pr),.34),transparent 62%),linear-gradient(160deg,#17181b,#0c0c0e)}
+#soc .shero::after{content:attr(data-g);position:absolute;right:-6px;bottom:-40px;font:900 160px/1 "Plus Jakarta Sans",system-ui,sans-serif;color:rgba(var(--pr),.09);pointer-events:none}
+#soc .shero>*{position:relative;z-index:1}
+#soc .shero .sico{width:54px;height:54px;border-radius:18px;font-size:24px}
+#soc .spills{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+#soc .spills span{font:700 11px/1 "Plus Jakarta Sans",system-ui,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.1);color:#ececf0}
+#soc .sgrp{background:#121316;border:1px solid rgba(255,255,255,.07);border-radius:24px;overflow:hidden;margin-top:12px}
+#soc .srow{display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer}
+#soc .srow+.srow{border-top:1px solid rgba(255,255,255,.06)}
+#soc .srow:active{background:rgba(255,255,255,.04)}
+#soc .sgd{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#soc .sp{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:18px;min-height:142px;padding:16px;border-radius:24px;cursor:pointer;background:radial-gradient(90% 80% at 0% 0%,rgba(var(--pr),.26),transparent 70%),#121316;border:1px solid rgba(255,255,255,.07)}
+#soc .sp .sbody{flex:none}
+#soc .sp .sbody small{margin-top:4px}
+#soc .sbadge{position:absolute;top:14px;right:14px;font:800 9.5px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.09);color:#cfd2d9}
+#soc .snote{display:flex;gap:12px;align-items:flex-start;margin:20px 2px 8px;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:12.5px;line-height:1.55;color:var(--mu)}
+#soc .snote i{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid #8b8f99;display:grid;place-items:center;font:700 12px/1 Georgia,serif;color:#8b8f99;font-style:italic;margin-top:1px}
+
+/* cards inside a social feed */
+#soc .card{background:#121316;border:1px solid rgba(255,255,255,.07);border-radius:22px;padding:18px}
+#soc .nr{padding:12px;border-radius:20px;background:#121316;border:1px solid rgba(255,255,255,.06);align-items:center}
+#soc .nr .th{flex:0 0 112px;border-radius:14px}
+#soc .nr .rt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+#soc .vi .th{border-radius:20px}
+#soc .vi h2.rt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+
+/* a long title inside a toast must never run off the screen */
+#toast{max-width:calc(100% - 32px);box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+/* "Pick up where you left off" label: quiet pill, not the link style */
+.lhero .lk{display:inline-block;align-self:flex-start;padding:6px 11px;border:0;border-radius:999px;background:rgba(0,0,0,.38);color:#fff;opacity:1}
+
+#soc .rh+.sl{margin-top:8px}
+#ab{background:rgba(7,7,8,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding-bottom:12px}
+#soc .card>.mu:first-child{display:inline-block;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.09);color:#cfd2d9;font:800 10.5px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px!important}
 </style>
-<script>[800,2000,4000].forEach(t=>setTimeout(()=>{try{SafinaUI.close()}catch(e){}},t));</script>
-</body></html>
+<script>[800,2000,4000].forEach(function(t){setTimeout(function(){try{SafinaUI.close()}catch(e){}},t)})</script></body></html>

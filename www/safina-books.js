@@ -123,8 +123,9 @@
 
   /* ---------- library hookup ---------- */
   const urls = {};
+  const clean = t => (window.SafinaTitle ? window.SafinaTitle.clean(t) : String(t == null ? '' : t).slice(0, 60) || 'Untitled');
   function toItem(r) {
-    const it = { title: r.title, lvl: r.type === 'book' ? 'Book' : 'Comic', ar: 1, sub: r.type === 'book' ? (r.pages ? r.pages.length : 0) + (r.pages && r.pages.length === 1 ? ' page' : ' pages') : r.imgs.length + (r.imgs.length === 1 ? ' page' : ' pages'), glyph: '→', open: () => open(r.id) };
+    const it = { id: r.id, title: clean(r.title), lvl: r.type === 'book' ? 'Book' : 'Comic', ar: 1, sub: r.type === 'book' ? (r.pages ? r.pages.length : 0) + (r.pages && r.pages.length === 1 ? ' page' : ' pages') : r.imgs.length + (r.imgs.length === 1 ? ' page' : ' pages'), glyph: '→', open: () => open(r.id), remove: async () => { await del(r.id); await refresh(); } };
     if (r.type === 'comic') { urls[r.id] = urls[r.id] || URL.createObjectURL(r.imgs[0]); it.poster = urls[r.id]; }
     return it;
   }
@@ -140,8 +141,8 @@
       try {
         toast('Importing…');
         let rec;
-        if (kind === 'BOOK') { const f = files[0], n = f.name.toLowerCase(), p = /\.epub$/.test(n) ? await parseEpub(await f.arrayBuffer(), f.name) : /\.pdf$/.test(n) ? await parsePdfBook(f) : /\.docx$/.test(n) ? await parseDocx(f) : /\.(html?|md)$/.test(n) ? await parseMarkup(f) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: p.title, pages: p.pages, pos: 0, created: Date.now() }; }
-        else { const p = await parseComic(files); rec = { id: 'c' + Date.now(), type: 'comic', title: p.title, imgs: p.imgs, pos: 0, created: Date.now() }; }
+        if (kind === 'BOOK') { const f = files[0], n = f.name.toLowerCase(), p = /\.epub$/.test(n) ? await parseEpub(await f.arrayBuffer(), f.name) : /\.pdf$/.test(n) ? await parsePdfBook(f) : /\.docx$/.test(n) ? await parseDocx(f) : /\.(html?|md)$/.test(n) ? await parseMarkup(f) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: clean(p.title), pages: p.pages, pos: 0, created: Date.now() }; }
+        else { const p = await parseComic(files); rec = { id: 'c' + Date.now(), type: 'comic', title: clean(p.title), imgs: p.imgs, pos: 0, created: Date.now() }; }
         await put(rec); await refresh(); toast('Added "' + rec.title + '"'); open(rec.id);
       } catch (e) { toast('Could not import: ' + (e && e.message ? e.message : e)); }
     };
@@ -168,7 +169,11 @@
     document.body.appendChild(b);
     const pop = document.createElement('div'); pop.id = 'sbk-pop'; document.body.appendChild(pop);
     $('sbk-x').onclick = close; $('sbk-p').onclick = () => go(-1); $('sbk-nx').onclick = () => go(1);
-    $('sbk-d').onclick = async () => { if (cur && confirm('Remove "' + cur.title + '" from your library?')) { await del(cur.id); close(); refresh(); } };
+    $('sbk-d').onclick = async () => {
+      if (!cur) return;
+      const nm = clean(cur.title), q = { title: 'Remove “' + nm + '”?', text: 'It will be taken out of your library, along with your place in it. The original file on your phone is not touched.', ok: 'Remove' };
+      if (await (window.SAFINA_RM ? window.SAFINA_RM.ask(q) : Promise.resolve(confirm(q.title)))) { await del(cur.id); close(); refresh(); }
+    };
     $('sbk-o').onclick = () => { ocrMode = !ocrMode; $('sbk-o').textContent = ocrMode ? 'Tap a bubble…' : 'Read text'; if (!ocrMode) $('sbk-oc').classList.remove('on'); };
     $('sbk-b').addEventListener('click', onBody);
     $('sbk-oc').addEventListener('click', onBody);
@@ -176,7 +181,7 @@
   }
   async function open(id) {
     cur = await get(id); if (!cur) return; page = Math.min(cur.pos || 0, (cur.type === 'book' ? cur.pages.length : cur.imgs.length) - 1); ocrMode = false;
-    shell().classList.add('on'); $('sbk-t').textContent = cur.title; $('sbk-o').style.display = cur.type === 'comic' ? '' : 'none'; $('sbk-o').textContent = 'Read text'; $('sbk-oc').classList.remove('on'); draw();
+    shell().classList.add('on'); $('sbk-t').textContent = clean(cur.title); $('sbk-o').style.display = cur.type === 'comic' ? '' : 'none'; $('sbk-o').textContent = 'Read text'; $('sbk-oc').classList.remove('on'); draw();
   }
   function close() { const b = $('sbk'); if (b) b.classList.remove('on'); closePop(); if (cur) { cur.pos = page; put(cur).catch(() => { }); } }
   const total = () => cur.type === 'book' ? cur.pages.length : cur.imgs.length;

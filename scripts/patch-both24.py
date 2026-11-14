@@ -352,12 +352,44 @@ rep('["Import Pages","Soon","","#3a5a2f,#121a0d"]', '["Import Comic (PDF / image
 rep('/^Import/.test(name)?openImport({type:r[3]=="TV"?"tv":"movie"})', '/^Import/.test(name)?(r[3]=="BOOK"||r[3]=="COMIC"?window.SAFINA_BOOKS.pick(r[3]):openImport({type:r[3]=="TV"?"tv":"movie"}))')
 rep('(on?"<i class=\'pp\'>▶</i>":"")', '(on?"<i class=\'pp\'>"+(it&&it.glyph||"▶")+"</i>":"")')
 rep('const lvOf=it=>it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs");', 'const lvOf=it=>it.lvl||(it.ar?(it.en?"AR + EN":"AR"):(it.en?"EN only":"No subs"));')
-rep('<script src="safina-prep-ui.js"></script>', '<script src="safina-prep-ui.js"></script>\n<script src="safina-books.js"></script>')
+rep('<script src="safina-prep-ui.js"></script>', '<script src="safina-prep-ui.js"></script>\n<script src="safina-books.js"></script>\n<script src="safina-remove.js"></script>')
+
+# ---- long titles never break a card; remove button on every card; new Socials landing ----
+def rep_span(start, end, new):
+    """replace the text from `start` through `end` (each must occur exactly once)"""
+    global s
+    assert s.count(start) == 1, 'span start: %d for %s' % (s.count(start), start[:100])
+    i = s.index(start); j = s.index(end, i)
+    assert s.count(end, i) >= 1
+    s = s[:i] + new + s[j + len(end):]
+
+rep('function lib(){const R=$("rows");R.innerHTML="";', 'function lib(){const R=$("rows");R.innerHTML="";const tc=x=>window.SafinaTitle?window.SafinaTitle.clean(x):String(x);')
+rep('<h3>"+esc(it.title)+"</h3>', '<h3>"+esc(tc(it.title))+"</h3>')
+rep('<button>▶ Play</button>";', '<button>"+(/^(Book|Comic)$/.test(it.lvl||"")?"Read":"▶ Play")+"</button>";')
+rep('name=it?it.title:x[0]', 'name=it?tc(it.title):x[0]')
+rep('   if(it&&!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(!u)return;const pe',
+    '   if(it){const rb=document.createElement("button");rb.className="rm";rb.type="button";rb.setAttribute("aria-label","Remove "+name);rb.innerHTML="<svg viewBox=\'0 0 24 24\' aria-hidden=\'true\'><path d=\'M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3\'/></svg>";rb.onclick=ev=>{ev.stopPropagation();ev.preventDefault();if(window.SAFINA_RM)window.SAFINA_RM.remove(r[3],it)};c.querySelector(".poster").append(rb)}\n'
+    '   if(it&&!it.poster){const src=itemSrc(it);if(src)rndFrame(src).then(u=>{if(!u)return;const pe')
+
+SOC_HOME = r"""function socHome(nm){
+ const rgb=h=>{h=String(h).replace("#","");return parseInt(h.slice(0,2),16)+","+parseInt(h.slice(2,4),16)+","+parseInt(h.slice(4,6),16)};
+ const by=id=>PL.find(p=>p[0]==id),yt=by("yt"),news=PL.filter(p=>p[4]=="news"),pr=PL.filter(p=>p[4]!="news"&&p[4]!="yt");
+ const chip=p=>"<i class='sico' style='background:linear-gradient(150deg,"+p[3]+")'>"+p[2]+"</i>",st=p=>"style='--pr:"+rgb(p[3].split(",")[0])+"'";
+ return "<div class='rh'><div><h2>Socials</h2><div class='mu'>Videos, social and news in "+esc(nm)+"</div></div></div>"
+ +"<div class='sl'><b>Real content</b><span>From the web</span></div>"
+ +"<div class='shero' data-a='p:yt' data-g='"+yt[2]+"' "+st(yt)+">"+chip(yt)+"<div class='sbody'><b>"+yt[1]+"</b><small>Real videos in "+esc(nm)+"</small><div class='spills'><span>Home</span><span>Shorts</span><span>Stories</span></div></div><span class='sgo'>&rsaquo;</span></div>"
+ +"<div class='sgrp'>"+news.map(p=>"<div class='srow' data-a='p:"+p[0]+"' "+st(p)+">"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>Latest headlines &middot; tap any word</small></div><span class='sgo'>&rsaquo;</span></div>").join("")+"</div>"
+ +"<div class='sl'><b>Practice feeds</b><span>Written by the AI</span></div>"
+ +"<div class='sgd'>"+pr.map(p=>"<div class='sp' data-a='p:"+p[0]+"' "+st(p)+"><span class='sbadge'>Practice</span>"+chip(p)+"<div class='sbody'><b>"+p[1]+"</b><small>AI-written "+esc(nm)+" posts</small></div></div>").join("")+"</div>"
+ +"<div class='snote'><i>i</i><span>TikTok, Facebook, Instagram and X do not let apps read their feeds, so these show posts the AI writes in "+esc(nm)+" for reading practice. They are always marked as practice text.</span></div>"}
+"""
+rep('let SOCN=0;\n', 'let SOCN=0;\n' + SOC_HOME)
+rep_span('if(!P){S.innerHTML="<div class=\'rh\'><div><h2>Socials</h2>', 'They are marked as practice text.</p>";return}', 'if(!P){S.innerHTML=socHome(nm);return}')
 
 # ---- storage shim: pages opened in a sandboxed viewer have no localStorage; fall back to memory so the app still starts ----
 _B = '<script src="safina-tree.js"></script>'
 assert s.count(_B) == 1
-s = s.replace(_B, _B + '\n<script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>', 1)
+s = s.replace(_B, _B + '\n<script src="safina-title.js"></script>\n<script>(function(){function mem(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}["localStorage","sessionStorage"].forEach(function(n){try{window[n].getItem("x")}catch(e){try{Object.defineProperty(window,n,{value:mem(),configurable:true})}catch(_){}}})})();</script>', 1)
 
 # ---- look: planet header + rounded sheet, dark with red (www/safina-theme.css) ----
 _i = s.rindex('</body>')
