@@ -65,10 +65,51 @@
     if (!paras.length) throw new Error('This file is empty');
     return { title: file.name.replace(/\.[^.]+$/, ''), pages: paginate(paras) };
   }
+  /* PDF (bundled pdf.js, works offline), DOCX, HTML, Markdown */
+  let pdfjs = null;
+  async function pdfLib() {
+    if (pdfjs) return pdfjs;
+    pdfjs = await import('./vendor/pdf.min.mjs'); pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', document.baseURI).href; return pdfjs;
+  }
+  async function openPdf(file) { const lib = await pdfLib(); return lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise; }
+  async function parsePdfBook(file) {
+    const doc = await openPdf(file), paras = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const tc = await (await doc.getPage(i)).getTextContent(); let t = '';
+      tc.items.forEach(x => { t += x.str + (x.hasEOL ? '\n' : ' '); });
+      t.split(/\n{2,}|\n(?=[A-Z\u0600-\u06FF][^\n]{0,40}\n)/).forEach(b => { b = b.replace(/\s+/g, ' ').trim(); if (b) paras.push(b); });
+      if (i % 10 === 0) toast('Reading page ' + i + ' of ' + doc.numPages + '…');
+    }
+    if (paras.join('').length < 40) throw new Error('This PDF has no text (it is scanned pictures). Import it as a comic instead.');
+    return { title: file.name.replace(/\.[^.]+$/, ''), pages: paginate(paras) };
+  }
+  async function parsePdfComic(file) {
+    const doc = await openPdf(file), imgs = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const pg = await doc.getPage(i), v1 = pg.getViewport({ scale: 1 }), sc = Math.min(2, 1400 / v1.width), v = pg.getViewport({ scale: sc }), c = document.createElement('canvas');
+      c.width = Math.round(v.width); c.height = Math.round(v.height); await pg.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+      imgs.push(await new Promise(ok => c.toBlob(ok, 'image/jpeg', .82))); c.width = c.height = 0;
+      if (i % 5 === 0 || i === doc.numPages) toast('Page ' + i + ' of ' + doc.numPages + '…');
+    }
+    return { title: file.name.replace(/\.[^.]+$/, ''), imgs };
+  }
+  async function parseDocx(file) {
+    const z = await unzip(await file.arrayBuffer()); if (!z['word/document.xml']) throw new Error('Not a Word document');
+    const x = new DOMParser().parseFromString(await text(z['word/document.xml']), 'application/xml'), paras = [];
+    x.querySelectorAll('p').forEach(p => { const t = [...p.querySelectorAll('t')].map(n => n.textContent).join('').trim(); if (t) paras.push(t); });
+    if (!paras.length) throw new Error('This document is empty'); return { title: file.name.replace(/\.[^.]+$/, ''), pages: paginate(paras) };
+  }
+  async function parseMarkup(file) {
+    const raw = new TextDecoder('utf-8').decode(await file.arrayBuffer()); let paras;
+    if (/\.html?$/i.test(file.name)) { const d = new DOMParser().parseFromString(raw, 'text/html'); paras = [...d.body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote')].filter(b => !b.querySelector('p,li')).map(b => b.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean); if (!paras.length) paras = [d.body.textContent.replace(/\s+/g, ' ').trim()]; }
+    else paras = raw.replace(/[#>*_`]+/g, '').split(/\n\s*\n/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (!paras.length || !paras.join('')) throw new Error('This file is empty'); return { title: file.name.replace(/\.[^.]+$/, ''), pages: paginate(paras) };
+  }
   const IMG = /\.(png|jpe?g|webp|gif)$/i, MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
   const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true });
   async function parseComic(files) {
     let imgs = [], title = '';
+    const pdf = files.find(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf'); if (pdf) return parsePdfComic(pdf);
     const zips = files.filter(f => /\.(cbz|zip)$/i.test(f.name));
     if (zips.length) {
       const z = await unzip(await zips[0].arrayBuffer()); title = zips[0].name.replace(/\.[^.]+$/, '');
@@ -92,14 +133,14 @@
   }
   function pick(kind) {
     const i = document.createElement('input'); i.type = 'file'; i.style.display = 'none';
-    if (kind === 'BOOK') i.accept = '.epub,.txt,application/epub+zip,text/plain'; else { i.accept = '.cbz,.zip,image/*'; i.multiple = true; }
+    if (kind === 'BOOK') i.accept = '.epub,.pdf,.docx,.txt,.md,.html,.htm,application/pdf,application/epub+zip,text/plain'; else { i.accept = '.pdf,.cbz,.zip,application/pdf,image/*'; i.multiple = true; }
     document.body.appendChild(i);
     i.onchange = async () => {
       const files = [...i.files]; i.remove(); if (!files.length) return;
       try {
         toast('Importing…');
         let rec;
-        if (kind === 'BOOK') { const f = files[0], p = /\.epub$/i.test(f.name) ? await parseEpub(await f.arrayBuffer(), f.name) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: p.title, pages: p.pages, pos: 0, created: Date.now() }; }
+        if (kind === 'BOOK') { const f = files[0], n = f.name.toLowerCase(), p = /\.epub$/.test(n) ? await parseEpub(await f.arrayBuffer(), f.name) : /\.pdf$/.test(n) ? await parsePdfBook(f) : /\.docx$/.test(n) ? await parseDocx(f) : /\.(html?|md)$/.test(n) ? await parseMarkup(f) : await parseTxt(f); rec = { id: 'b' + Date.now(), type: 'book', title: p.title, pages: p.pages, pos: 0, created: Date.now() }; }
         else { const p = await parseComic(files); rec = { id: 'c' + Date.now(), type: 'comic', title: p.title, imgs: p.imgs, pos: 0, created: Date.now() }; }
         await put(rec); await refresh(); toast('Added "' + rec.title + '"'); open(rec.id);
       } catch (e) { toast('Could not import: ' + (e && e.message ? e.message : e)); }
@@ -190,7 +231,7 @@
     $('sbk-fix').onclick = ev => { ev.preventDefault(); oc.innerHTML = '<textarea id="sbk-ta" dir="auto">' + esc(t || '') + '</textarea><div style="margin-top:8px"><button id="sbk-ok" style="height:40px;padding:0 18px;border:0;border-radius:12px;background:var(--ac,#e11d2e);color:#fff;font-weight:700">Done</button></div>'; $('sbk-ta').focus(); $('sbk-ok').onclick = () => showText($('sbk-ta').value.trim()); };
   }
 
-  window.SAFINA_BOOKS = { pick, open, refresh, parseEpub, parseTxt, parseComic };
+  window.SAFINA_BOOKS = { pick, open, refresh, parseEpub, parseTxt, parseComic, parsePdfBook, parsePdfComic };
   const start = () => setTimeout(refresh, 600);
   document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', start) : start();
 })();
